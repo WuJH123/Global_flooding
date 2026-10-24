@@ -268,8 +268,34 @@ def main():
         raise RuntimeError("For submission supply --plan-id EXACTLY as shown in preview")
     if a.submit:
         qc = root / "calibration_qc" / "21c_calibration_status.json"
-        if not qc.is_file() or json.loads(qc.read_text(encoding="utf-8")).get("status") != "PASS":
-            raise RuntimeError("Numerical calibration PASS is mandatory; refusing production submission.")
+        if not qc.is_file():
+            raise RuntimeError(
+                "CALIBRATION MISSING: no official Stage21 parity result. "
+                f"Expected {qc}. First run pipelines/r32/21_calibrate_known.py "
+                "--base E:\\Global_flooding --date 2020-07-01 --submit, "
+                "download std32_calibration_2020.csv, then run "
+                "pipelines/r32/21c_compare_calibration.py "
+                "--base E:\\Global_flooding --calibration-csv <downloaded-file>. "
+                "No production tasks submitted."
+            )
+        status = json.loads(qc.read_text(encoding="utf-8"))
+        if status.get("status") != "PASS":
+            raise RuntimeError(
+                f"CALIBRATION NOT PASSED: {qc}; status={status.get('status')}. "
+                "Review 21c_calibration_features.csv before retrying; no tasks submitted."
+            )
+        algorithm = find_legacy(Path(__file__).resolve().parents[2])
+        actual_sha = source_digest(algorithm)
+        if status.get("weather_source_sha256") != actual_sha:
+            raise RuntimeError(
+                "CALIBRATION CODE VERSION MISMATCH: validated algorithm differs from "
+                f"{algorithm}. Re-run small-sample calibration and 21c comparator. "
+                "Old or unfingerprinted PASS files cannot authorize production."
+            )
+        print(
+            f"[CALIBRATION PASS] {status.get('sample_size')} rows; "
+            f"source_sha256={actual_sha[:12]}; parity verified."
+        )
     import ee
     ee.Initialize(project=PROJECT)
     verify_assets.calendar = root
