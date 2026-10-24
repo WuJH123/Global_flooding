@@ -1,5 +1,7 @@
 # Global flooding：全球城市洪涝观测与气候分析
 
+> **Canonical project management (2026-10-24):** Please use [Project Overview](docs/PROJECT_OVERVIEW.md), [Data Registry](docs/DATA_REGISTRY.md), [Local Git Sync](docs/LOCAL_SYNC.md), and [Results 3.2 pipeline](pipelines/r32/README.md) before running new tasks. Historical scripts at repository root are intentionally preserved; new Results 3.2 tools live in `pipelines/r32/`. Data and result files remain local; the repository cannot verify your Windows disks.
+
 本仓库保存 Groundsource 全球洪涝报告的处理脚本。研究流程将报告定位到 20 km 格网，结合 GHSL 定义城市格网与洪涝事件，再建立对照、提取气候变量，进行配对诊断、探索性建模和观测覆盖分析。`mechanism_scripts/` 是城市、流域、地形与气候背景变量的独立补充流程。
 
 ## 代码流程
