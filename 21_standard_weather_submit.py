@@ -226,6 +226,8 @@ def main():
     p.add_argument('--calendar-dir',type=Path,default=None,help='Stage20/20b output directory; defaults to standard_calendar_20b')
     p.add_argument('--max-requests',type=int,default=20000)
     p.add_argument('--max-dates',type=int,default=45)
+    p.add_argument('--verify-assets',action='store_true',help='Verify imported yearly request assets without exporting')
+    p.add_argument('--skip-calibration-gate',action='store_true',help='Unsafe: explicitly override numerical parity gate')
     p.add_argument('--submit',action='store_true',help='Start EE tasks; without this only produce local plan')
     p.add_argument('--max-tasks',type=int,default=1,help='Maximum NEW tasks to submit; 0 means all, only with --submit')
     p.add_argument('--year',type=int,default=None,help='Restrict submission to one year; plan remains global')
@@ -244,10 +246,17 @@ def main():
           f'max requests={plan.requests.max():,}, max distinct dates={plan.distinct_dates.max()}',flush=True)
     print(f'[SAVED] {target}',flush=True)
     print(plan.groupby('year').agg(tasks=('group','count'),requests=('requests','sum')).to_string(),flush=True)
-    if not a.submit:
+    if not (a.submit or a.verify_assets):
         print('PLAN ONLY: no EE calls and no tasks started. Review plan and upload yearly standard_requests_YYYY assets first.')
         return
     if a.max_tasks<0: raise ValueError('--max-tasks must be >=0')
+    if a.submit and not a.skip_calibration_gate:
+        status_file=calendar_dir/'calibration_qc'/'21c_calibration_status.json'
+        if not status_file.is_file():
+            raise RuntimeError('Numerical climate calibration is required before production submission. Run pipelines/r32/21_calibrate_known.py and 21c_compare_calibration.py first.')
+        status=json.loads(status_file.read_text(encoding='utf-8'))
+        if status.get('status') != 'PASS':
+            raise RuntimeError('Calibration failed or not yet approved. Do not submit bulk GEE jobs.')
     if not frozen.exists(): frozen.write_text(plan_signature,encoding='utf-8')
     import ee
     ee.Initialize(project=PROJECT)
@@ -259,6 +268,20 @@ def main():
         if data.get('type') != 'TABLE':
             raise RuntimeError(f'Asset not a TABLE: {asset}')
         print(f'[ASSET OK] {asset}',flush=True)
+        actual=int(ee.FeatureCollection(asset).size().getInfo())
+        expected=int(plan.loc[plan.year.eq(year),'requests'].sum())
+        if actual != expected:
+            raise RuntimeError(f'Asset row count mismatch for {asset}: {actual} != {expected}')
+        first=ee.Feature(ee.FeatureCollection(asset).first())
+        properties=first.toDictionary(['grid_x','grid_y','month','request_chunk','date_str']).getInfo()
+        if not all(isinstance(properties.get(k),(int,float)) for k in ('grid_x','grid_y','month','request_chunk')):
+            raise RuntimeError(f'Asset has incorrectly typed grid or chunk properties: {asset}: {properties}')
+        if not isinstance(properties.get('date_str'),str):
+            raise RuntimeError(f'Asset date_str must be text YYYY-MM-DD: {asset}')
+        print(f'[ASSET VERIFIED] {year} rows={actual:,}',flush=True)
+    if a.verify_assets:
+        print('[VERIFY DONE] No weather export tasks submitted')
+        return
     tasks=ee.data.getTaskList()
     remote={}
     for t in tasks:
