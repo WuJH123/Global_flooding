@@ -28,7 +28,7 @@ def test_likelihood_strata_and_optimizer():
     assert np.isfinite(row["test_conditional_logloss"])
     assert 0<=row["test_top1_onset"]<=1
     assert len(coefs)==1
-    assert row["within_stratum_baseline"]==0.2
+    assert np.isclose(row["within_stratum_baseline"],0.2,atol=1e-12)
 
 def test_standardization_uses_only_training_data():
     n=100
