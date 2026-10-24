@@ -1,0 +1,19 @@
+{
+  "project_root": "E:\\Global_flooding",
+  "m3_catalogue": "PATH_TO_M3_URBAN_CATALOGUE.parquet",
+  "reported_gridday": "PATH_TO_GROUNDSOURCE_GRIDDAY.parquet",
+  "episodes": "PATH_TO_M3_FLOOD_EPISODES.parquet",
+  "primary_matched": "PATH_TO_PRIMARY_MATCHED_STRATA.parquet",
+  "urban_universe": "PATH_TO_GLOBAL_URBAN_UNIVERSE.csv",
+  "ucdb": "PATH_TO_GHS_UCDB.gpkg",
+  "basin_root": "PATH_TO_BASINATLAS_DIRECTORY",
+  "flood_archive_region": "PATH_TO_FLOOD_ARCHIVE.shp",
+  "dfo_master": "PATH_TO_DFO_MASTER.shp",
+  "flood_1989_2017": "PATH_TO_HISTORICAL_FLOOD_POINTS.shp",
+  "cama_nc": "PATH_TO_CAMA_NETCDF.nc",
+  "population_2025": "PATH_TO_POPULATION_RASTER.tif",
+  "human_footprint_2024": "PATH_TO_HUMAN_FOOTPRINT_RASTER.tif",
+  "wsf_2019": "PATH_TO_WSF_RASTER.tif",
+  "cru_precip": "PATH_TO_CRU_PRECIP_NETCDF.nc",
+  "stage1_records": "PATH_TO_GROUNDSOURCE_STAGE1.parquet"
+}

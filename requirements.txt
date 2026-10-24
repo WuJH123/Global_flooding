@@ -1,0 +1,14 @@
+duckdb
+earthengine-api
+geopandas
+h5netcdf
+matplotlib
+numpy
+pandas
+pyarrow
+pyogrio
+pyproj
+rasterio
+scipy
+shapely
+xarray

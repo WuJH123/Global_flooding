@@ -1,0 +1,46 @@
+# Local environments and editor state
+.venv/
+env/
+.idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local data, exports, model outputs, and manuscript materials
+Climate_all/
+Groundsource_all/
+MERIT_all/
+climate_global/
+climate_local_first/
+climate_mechanism_diagnostics/
+climate_mechanism_models/
+climate_requests/
+climate_requests_chunked/
+episode_control/
+koppen_geiger_tif/
+mechanism_project/
+processed_local/
+referent_audit_19/
+results_31/
+standard_calendar_20/
+standard_calendar_20b/
+standard_calendar_22/
+Standard_Climate_all/
+论文材料/
+*.zip
+*.7z
+*.parquet
+*.duckdb
+*.tif
+*.tiff
+*.nc
+*.shp
+*.gpkg
+*.csv
+*.docx
+*.png
+*.svg
+*.jsonl
+
+# Machine-specific configuration
+mechanism_scripts/project_paths.json
