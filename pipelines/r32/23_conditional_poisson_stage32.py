@@ -32,8 +32,8 @@ MODELS = {
 def digest(value):
     return int.from_bytes(hashlib.blake2b(str(value).encode(), digest_size=8).digest(), "little")
 
-def load_panel(base, max_strata, include_continuing):
-    source = base / "standard_calendar_22" / "22_standard_daily_with_climate.parquet"
+def load_panel(base, max_strata, include_continuing, panel_path=None):
+    source = Path(panel_path) if panel_path else base / "standard_calendar_22" / "22_standard_daily_with_climate.parquet"
     if not source.is_file():
         raise FileNotFoundError(source)
     con = duckdb.connect()
@@ -203,12 +203,13 @@ def main():
     p.add_argument("--seed",type=int,default=2026)
     p.add_argument("--block-cells",type=int,default=25)
     p.add_argument("--max-strata",type=int,default=None)
+    p.add_argument("--panel-path",type=Path,default=None,help="Explicit climate-complete Stage22 panel (e.g. 22_compact)")
     p.add_argument("--include-continuing",action="store_true",
                    help="Sensitivity: count continuing reported flood days as non-onset")
     a=p.parse_args()
     if a.block_cells<1:
         raise ValueError("--block-cells must be >=1")
-    data,before,after=load_panel(a.base,a.max_strata,a.include_continuing)
+    data,before,after=load_panel(a.base,a.max_strata,a.include_continuing,a.panel_path)
     out=a.base/"stage32_results"
     out.mkdir(parents=True,exist_ok=True)
     suffix=""
