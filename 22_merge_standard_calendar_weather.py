@@ -98,6 +98,14 @@ def main():
         (SELECT COUNT(*) FROM n LEFT JOIN m USING(climate_id) WHERE m.climate_id IS NULL) extra_ids
  """).fetchone()
  if sets!=(0,0):raise RuntimeError(f'New CSV ID coverage differs from Stage20: {sets}')
+ # Validate the returned feature's date/grid, not merely matching climate_id.
+ mismatch=con.execute(f"""
+ SELECT COUNT(*) FROM new_csv n JOIN read_parquet('{qp(miss)}') m USING(climate_id)
+ WHERE CAST(n.grid_id AS VARCHAR) <> CAST(m.grid_id AS VARCHAR)
+    OR TRY_CAST(n.date_str AS DATE) IS NULL
+    OR TRY_CAST(n.date_str AS DATE) <> CAST(m.sample_date AS DATE)
+ """).fetchone()[0]
+ if mismatch:raise RuntimeError(f'GEE export has {mismatch} wrong grid/date rows')
  # Avoid implicit string inference differences for numeric climate values.
  weather_sql=',\n'.join('TRY_CAST("'+c+'" AS DOUBLE) AS "'+c+'"' for c in WCOLS)
  con.execute(f"""
