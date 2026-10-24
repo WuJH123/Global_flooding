@@ -44,3 +44,16 @@ Standard_Climate_all/
 
 # Machine-specific configuration
 mechanism_scripts/project_paths.json
+
+# New stage results and local QC/plot artifacts
+stage32_results/
+audits/
+*.geojson
+*.geojsonl
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+.env.*
+!.env.example
