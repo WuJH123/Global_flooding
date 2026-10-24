@@ -15,8 +15,7 @@ def main():
     p.add_argument("--rel-tol", type=float, default=0.005)
     a = p.parse_args()
     import duckdb
-    root = Path(__file__).resolve().parents[2]
-    script = root / "21_standard_weather_submit.py"
+    script = Path(__file__).with_name("21_standard_weather_submit.py")
     spec = importlib.util.spec_from_file_location("legacy21", script)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

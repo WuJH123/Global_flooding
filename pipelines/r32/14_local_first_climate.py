@@ -4,8 +4,8 @@
 same-day nearby-grid ERA5 proxy (sensitivity only).
 
 Windows:
- E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\14_local_first_climate.py
- E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\14_local_first_climate.py --neighbor --max-donor-km 35
+ E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\14_local_first_climate.py
+ E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\14_local_first_climate.py --neighbor --max-donor-km 35
 """
 from __future__ import annotations
 

@@ -14,7 +14,7 @@ def main():
     a = p.parse_args()
     if a.rows < 10 or a.rows > 100:
         raise ValueError("Calibration rows must be 10..100")
-    original = a.base / "21_standard_weather_submit.py"
+    original = Path(__file__).with_name("21_standard_weather_submit.py")
     if not original.is_file():
         raise FileNotFoundError(original)
     print(f"[CALIBRATION] {a.rows} known requests on {a.date} via {original}")

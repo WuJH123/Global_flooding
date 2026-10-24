@@ -5,6 +5,7 @@ env/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 
 # Local data, exports, model outputs, and manuscript materials
 Climate_all/

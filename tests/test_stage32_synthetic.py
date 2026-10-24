@@ -1,6 +1,8 @@
 """Synthetic-only smoke tests: no local datasets or Google credentials required."""
 from __future__ import annotations
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -47,3 +49,10 @@ def test_standardization_uses_only_training_data():
 def test_data_registry_manifest_is_present():
     path=ROOT/"docs"/"DATA_REGISTRY.md"
     assert path.read_text(encoding="utf-8").count("26,317")>=1
+
+def test_calibration_preview_finds_stage21_after_relocation(tmp_path):
+    script=ROOT/"pipelines"/"r32"/"21_calibrate_known.py"
+    result=subprocess.run([sys.executable,str(script),"--base",str(tmp_path)],
+                          capture_output=True,text=True,check=True)
+    assert "21_standard_weather_submit.py" in result.stdout
+    assert "Preview only" in result.stdout

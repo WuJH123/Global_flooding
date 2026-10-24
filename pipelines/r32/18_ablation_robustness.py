@@ -7,9 +7,9 @@ The evidence is exploratory: existing 1:4 matched controls are not a canonical
 same-weekday time-stratified design, and held-out spatial blocks may share storms.
 
 Usage (PowerShell):
-  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\18_ablation_robustness.py --max-strata 5000 --spatial-seeds 2026
-  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\18_ablation_robustness.py
-  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\18_ablation_robustness.py --spatial-seeds 2026,2031,2040 --block-cells 25
+  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\18_ablation_robustness.py --max-strata 5000 --spatial-seeds 2026
+  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\18_ablation_robustness.py
+  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\18_ablation_robustness.py --spatial-seeds 2026,2031,2040 --block-cells 25
 """
 from __future__ import annotations
 

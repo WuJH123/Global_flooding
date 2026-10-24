@@ -13,7 +13,7 @@ pre-existing climate lookup is outcome-selected by the original 1:4 design.
 
 Windows example:
   E:\\Global_flooding\\.venv\\Scripts\\python.exe ^
-    E:\\Global_flooding\\19_audit_time_stratified_referents.py ^
+    E:\\Global_flooding\\pipelines\\r32\\19_audit_time_stratified_referents.py ^
     --full-gridday "E:\\数据集\\Groundsource_全球城市内涝点位\\processed\\groundsource_gridday_20km.parquet"
 
 Requires: duckdb, pandas, pyarrow.

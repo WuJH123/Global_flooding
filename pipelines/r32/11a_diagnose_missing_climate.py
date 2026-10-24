@@ -1,8 +1,8 @@
 """Audit expected Earth Engine climate CSV exports against local files and task states.
 
 Usage (PowerShell):
-  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\11a_diagnose_missing_climate.py
-  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\11a_diagnose_missing_climate.py --local-only
+  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\11a_diagnose_missing_climate.py
+  E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\11a_diagnose_missing_climate.py --local-only
 
 This script NEVER re-runs, cancels, deletes, or overwrites any EE task or file.
 """

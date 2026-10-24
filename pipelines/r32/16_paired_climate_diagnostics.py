@@ -7,7 +7,7 @@ calculates case value and the mean of its four matched controls, then the
 within-stratum difference. Does not fit inferential models or claim independence.
 
 Default Windows command:
- E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\16_paired_climate_diagnostics.py
+ E:\\Global_flooding\\.venv\\Scripts\\python.exe E:\\Global_flooding\\pipelines\\r32\\16_paired_climate_diagnostics.py
 
 Optional explicit input/output paths:
  python 16_paired_climate_diagnostics.py --primary PATH --neighbor PATH --all-strata PATH --out DIR
