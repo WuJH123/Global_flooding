@@ -5,6 +5,7 @@ Requires authenticated gcloud and Earth Engine CLIs. Never submits weather expor
 from __future__ import annotations
 import argparse
 import csv
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -55,8 +56,20 @@ def main():
                 if not shutil.which(command):
                     raise RuntimeError(f"Executable not found: {command}")
             subprocess.run(["gcloud", "storage", "cp", str(path), uri], check=True)
-            subprocess.run(["earthengine", "upload", "table",
-                            f"--asset_id={asset}", uri], check=True)
+            # Explicit Table manifest: the request points locate grid centers;
+            # Stage21 reconstructs the true 20 km polygons from grid_x/grid_y.
+            manifest = {"name": asset, "sources": [{
+                "uris": [uri], "xColumn": "longitude", "yColumn": "latitude",
+                "crs": "EPSG:4326"}]}
+            manifest_file = root / f"manifest_standard_{year}.json"
+            manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            existing = subprocess.run(["earthengine", "asset", "info", asset],
+                                      capture_output=True, text=True)
+            if existing.returncode == 0:
+                print(f"[SKIP] Asset already exists. Verify row counts: {asset}")
+                continue
+            subprocess.run(["earthengine", "upload", "table", "--manifest",
+                            str(manifest_file)], check=True)
     print(f"[DONE] {len(paths)} years, {total:,} rows; upload={a.upload}")
     if a.upload:
         print("WAIT for ingestion to complete. Check asset row counts before weather submission.")
