@@ -85,7 +85,7 @@ def test_disjoint_risk_stratum_split_and_gradient():
 
 def test_interactions_paired_heldout_and_cluster_ci(tmp_path):
     data=make_data()
-    coeff,gains,manifest=m.analyze(data,tmp_path,"temporal",25,2026,99)
+    coeff,gains,responses,manifest=m.analyze(data,tmp_path,"temporal",25,2026,99)
     assert set(gains.baseline)=={"I0_additive"}
     assert len(gains)==4
     assert len(coeff)>25
@@ -94,3 +94,5 @@ def test_interactions_paired_heldout_and_cluster_ci(tmp_path):
     assert (gains.gain_CI_low<=gains.gain_CI_high).all()
     assert (coeff.cluster_se>=0).all()
     assert manifest["P24"]["transform"]=="log1p"
+    assert len(responses)==6
+    assert (responses.ratio_ci_low<=responses.ratio_ci_high).all()
