@@ -31,7 +31,9 @@ def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument('--base',type=Path,default=BASE)
  p.add_argument('--calendar-dir',type=Path,default=None,help='Stage20b output, defaults to standard_calendar_20b')
- p.add_argument('--csv-root',type=Path,default=BASE/'Standard_Climate_all')
+ p.add_argument('--csv-root',type=Path,default=BASE/'Standard_Climate_Compact_all')
+ p.add_argument('--rescue-plan',type=Path,default=None,help='Optional immutable Stage21g rescue plan')
+ p.add_argument('--rescue-csv-root',type=Path,default=None,help='Downloaded STD32R files; required with --rescue-plan')
  a=p.parse_args()
  root=a.calendar_dir or (a.base/'standard_calendar_20b')
  panel=root/'20_standard_daily_panel.parquet'
@@ -42,37 +44,73 @@ def main():
   if not f.exists():raise FileNotFoundError(f)
  plan=pd.read_csv(plan_path)
  if len(plan)==0:raise RuntimeError('Empty plan')
- pattern=re.compile(r'^(std32c_[a-f0-9]{8}_b\d{3})\.csv$', re.I)
+ task_records = [
+  {"block":int(r.block), "parent":int(r.block),
+   "requests":int(r.requests), "filename":str(r.filename)}
+  for r in plan.itertuples(index=False)
+ ]
+ scan_dirs=[a.csv_root]
+ if (a.rescue_plan is None)!=(a.rescue_csv_root is None):
+  raise ValueError('--rescue-plan and --rescue-csv-root must be specified together')
+ if a.rescue_plan is not None:
+  if not a.rescue_plan.exists():raise FileNotFoundError(a.rescue_plan)
+  if not a.rescue_csv_root.exists():raise FileNotFoundError(a.rescue_csv_root)
+  rescue=pd.read_csv(a.rescue_plan)
+  required={'parent_block','recovery_part','requests','filename','members_json'}
+  if required-set(rescue.columns):
+   raise RuntimeError('Recovery plan missing columns: '+str(sorted(required-set(rescue.columns))))
+  parents=set(map(int,rescue.parent_block))
+  if not parents or not parents.issubset(set(map(int,plan.block))):
+   raise RuntimeError('Rescue parents not a subset of original plan')
+  for block in sorted(parents):
+   p_record=plan.loc[plan.block==block]
+   old=json.loads(p_record.iloc[0].members_json)
+   replacement=rescue.loc[rescue.parent_block==block].sort_values('recovery_part')
+   new=[m for rec in replacement.itertuples(index=False) for m in json.loads(rec.members_json)]
+   if old!=new or int(replacement.requests.sum())!=int(p_record.iloc[0].requests):
+    raise RuntimeError(f'Rescue plan B{block:03d} has missing, duplicated or re-ordered source chunks')
+   if replacement.recovery_part.duplicated().any():
+    raise RuntimeError(f'Rescue plan B{block:03d} repeats a child part')
+  task_records=[r for r in task_records if r['parent'] not in parents]
+  task_records.extend([
+   {"block":int(r.recovery_part),"parent":int(r.parent_block),
+    "requests":int(r.requests),"filename":str(r.filename)}
+   for r in rescue.itertuples(index=False)
+  ])
+  scan_dirs.append(a.rescue_csv_root)
+ pattern=re.compile(r'^(std32(?:c|r)_[a-f0-9]{8}_(?:b\d{3}|b\d{3}_s\d{2}))\.csv$', re.I)
  found={}
- for f in a.csv_root.rglob('*.csv'):
-  m=pattern.match(f.name)
-  if m:found.setdefault(m.group(1).lower(),[]).append(f)
- expected={str(r.filename).lower() for r in plan.itertuples(index=False)}
- if len(expected)!=len(plan):raise RuntimeError('Duplicate compact export filename in plan')
+ for folder in scan_dirs:
+  for f in folder.rglob('*.csv'):
+   m=pattern.fullmatch(f.name)
+   if m:found.setdefault(m.group(1).lower(),[]).append(f)
+ expected={r['filename'].lower() for r in task_records}
+ if len(expected)!=len(task_records):raise RuntimeError('Duplicate selected export filename in plan')
  missing=expected-set(found)
  duplicate={key:fs for key,fs in found.items() if key in expected and len(fs)!=1}
  extra=set(found)-expected
  if missing or duplicate or extra:
-  print('Missing task outputs:',sorted(missing))
+  print('Missing selected task outputs:',sorted(missing))
   print('Duplicate task outputs:',duplicate)
-  print('Unexpected compact output files:',sorted(extra))
-  raise RuntimeError('Compact exports do not match immutable plan')
+  print('Unrecognized/originally failed export files:',sorted(extra))
+  raise RuntimeError('Selected compact/rescue exports do not match authoritative plan')
  con=duckdb.connect()
  con.execute('PRAGMA threads=8')
  outdir=a.base/'standard_calendar_22_compact'
  outdir.mkdir(parents=True,exist_ok=True)
  tasks=[]
- for r in plan.itertuples(index=False):
-  f=found[str(r.filename).lower()][0]
+ for r in task_records:
+  f=found[r['filename'].lower()][0]
   count=con.execute(f"SELECT COUNT(*) FROM read_csv_auto('{qp(f)}',header=true,all_varchar=true)").fetchone()[0]
-  tasks.append(dict(block=int(r.block),expected=int(r.requests),actual=int(count),file=str(f)))
+  tasks.append(dict(parent_block=r['parent'],part=r['block'],
+                    expected=int(r['requests']),actual=int(count),file=str(f)))
  taskdf=pd.DataFrame(tasks)
  taskdf.to_csv(outdir/'22_export_task_qc.csv',index=False,encoding='utf-8-sig')
  bad=taskdf[taskdf.actual!=taskdf.expected]
  if len(bad):
   print(bad.to_string(index=False))
   raise RuntimeError('Some task outputs have unexpected row counts')
- files=[found[str(r.filename).lower()][0] for r in plan.itertuples(index=False)]
+ files=[found[r['filename'].lower()][0] for r in task_records]
  src='['+','.join("'"+qp(f)+"'" for f in files)+']'
  con.execute(f"""
  CREATE OR REPLACE TEMP VIEW new_csv AS
