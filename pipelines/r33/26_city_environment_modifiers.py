@@ -27,7 +27,7 @@ from importlib.util import spec_from_file_location,module_from_spec
 
 
 def shared():
-    path=Path(__file__).with_name("25_conditional_interactions_ci.py")
+    path=Path(__file__).resolve().parents[1]/"r32"/"25_conditional_interactions_ci.py"
     spec=spec_from_file_location("stage25_for_city",path)
     obj=module_from_spec(spec)
     spec.loader.exec_module(obj)
@@ -193,7 +193,7 @@ def main():
     all_coef,all_metric=[],[]
     coverage=[]
     for variable in modifiers:
-        subset=data.loc[mask | ~mask].copy() if False else data[
+        subset=data[
             np.isfinite(data[variable].to_numpy(dtype=float)) &
             (data[variable].to_numpy(dtype=float)>=0)
         ].copy()
