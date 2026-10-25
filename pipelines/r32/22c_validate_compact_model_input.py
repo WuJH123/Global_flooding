@@ -72,8 +72,8 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
     con.execute(f"""
        CREATE TEMP VIEW daily AS SELECT *,
          CAST(reported_non_onset_day=0 AS INTEGER) AS risk_candidate,
-         CAST(({validity}) AS INTEGER) AS model_valid,
-         CAST(({all_weather}) AS INTEGER) AS all_weather_valid
+         CAST(COALESCE(({validity}), FALSE) AS INTEGER) AS model_valid,
+         CAST(COALESCE(({all_weather}), FALSE) AS INTEGER) AS all_weather_valid
        FROM read_parquet('{path}')
     """)
     totals=query_one(con,"""
