@@ -34,6 +34,8 @@ def main():
  p.add_argument('--csv-root',type=Path,default=BASE/'Standard_Climate_Compact_all')
  p.add_argument('--rescue-plan',type=Path,default=None,help='Optional immutable Stage21g rescue plan')
  p.add_argument('--rescue-csv-root',type=Path,default=None,help='Downloaded STD32R files; required with --rescue-plan')
+ p.add_argument('--retry-plan',type=Path,default=None,help='21h date-disjoint second-level retry plan')
+ p.add_argument('--retry-csv-root',type=Path,default=None,help='Downloaded STD32T files for failed 21g children')
  a=p.parse_args()
  root=a.calendar_dir or (a.base/'standard_calendar_20b')
  panel=root/'20_standard_daily_panel.parquet'
@@ -78,7 +80,78 @@ def main():
    for r in rescue.itertuples(index=False)
   ])
   scan_dirs.append(a.rescue_csv_root)
- pattern=re.compile(r'^(std32(?:c|r)_[a-f0-9]{8}_(?:b\d{3}|b\d{3}_s\d{2}))\.csv$', re.I)
+ if (a.retry_plan is None)!=(a.retry_csv_root is None):
+  raise ValueError('--retry-plan and --retry-csv-root must be specified together')
+ if a.retry_plan is not None:
+  if a.rescue_plan is None:
+   raise RuntimeError('Second-level retries require --rescue-plan and --rescue-csv-root')
+  if not a.retry_plan.exists():raise FileNotFoundError(a.retry_plan)
+  if not a.retry_csv_root.exists():raise FileNotFoundError(a.retry_csv_root)
+  second=pd.read_csv(a.retry_plan)
+  required2={'parent_block','parent_part','retry_part','requests','filename','members_json'}
+  if required2-set(second.columns):
+   raise RuntimeError('Second-level retry plan missing fields '+str(sorted(required2-set(second.columns))))
+  if second.duplicated(['parent_block','parent_part','retry_part']).any():
+   raise RuntimeError('Second-level retry has duplicate task indices')
+  selected_children={(int(r.parent_block),int(r.parent_part)) for r in second.itertuples(index=False)}
+  original_children={(int(r.parent_block),int(r.recovery_part)) for r in rescue.itertuples(index=False)}
+  if not selected_children or not selected_children<=original_children:
+   raise RuntimeError('Retry targets are not in original rescue plan')
+  # Reconcile at the individual date level, including request counts; no data
+  # inferred or dropped just because a filename is present.
+  db=duckdb.connect()
+  try:
+   daily=db.execute("""
+   SELECT CAST(year AS INTEGER),CAST(month AS INTEGER),
+          CAST(request_chunk AS INTEGER),CAST(date_str AS VARCHAR),
+          COUNT(*),COUNT(DISTINCT climate_id)
+   FROM read_parquet(?) GROUP BY 1,2,3,4
+   """,[str(miss)]).fetchall()
+  finally:db.close()
+  date_counts={}
+  for year,month,chunk,day,count,unique in daily:
+   if count!=unique:raise RuntimeError('Duplicate Stage20b climate IDs on '+str((year,month,chunk,day)))
+   date_counts[(int(year),int(month),int(chunk),str(day))]=int(count)
+  for parent,part in sorted(selected_children):
+   oldrow=rescue.loc[(rescue.parent_block==parent)&(rescue.recovery_part==part)].iloc[0]
+   originals=json.loads(oldrow.members_json)
+   required_months={(int(m['year']),int(m['month']),int(m['chunk'])) for m in originals}
+   expected_dates={k:v for k,v in date_counts.items() if k[:3] in required_months}
+   retry_rows=second.loc[(second.parent_block==parent)&(second.parent_part==part)].sort_values('retry_part')
+   if sorted(map(int,retry_rows.retry_part))!=list(range(len(retry_rows))):
+    raise RuntimeError(f'Non-consecutive retry part IDs in B{parent:03d}_S{part:02d}')
+   seen={}
+   for row in retry_rows.itertuples(index=False):
+    request_total=0
+    for m in json.loads(row.members_json):
+     monthkey=(int(m['year']),int(m['month']),int(m['chunk']))
+     if monthkey not in required_months:
+      raise RuntimeError('Retry includes a source month outside original failed child')
+     subtotal=0
+     for date in m['dates']:
+      key=monthkey+(str(date),)
+      if key in seen:raise RuntimeError(f'Retry duplicates date group: {key}')
+      if key not in expected_dates:raise RuntimeError(f'Retry date not in source: {key}')
+      seen[key]=expected_dates[key]
+      subtotal+=expected_dates[key]
+     if subtotal!=int(m['requests']):
+      raise RuntimeError(f'Retry member incorrect row count: {monthkey}')
+     request_total+=subtotal
+    if request_total!=int(row.requests):
+     raise RuntimeError(f'Retry task row count differs from source: {row.filename}')
+   if seen!=expected_dates or sum(seen.values())!=int(oldrow.requests):
+    raise RuntimeError(f'Second-level retries do not partition B{parent:03d}_S{part:02d}')
+  # Parent 21g recovery files for successful children remain authoritative.
+  # Only failing children S01/S02 are substituted with their grandchildren.
+  task_records=[r for r in task_records if (r['parent'],r['block']) not in selected_children
+                or not r['filename'].lower().startswith('std32r_')]
+  task_records.extend([
+   {'block':int(r.retry_part),'parent':int(r.parent_block),
+    'requests':int(r.requests),'filename':str(r.filename)}
+   for r in second.itertuples(index=False)
+  ])
+  scan_dirs.append(a.retry_csv_root)
+ pattern=re.compile(r'^(std32c_[a-f0-9]{8}_b\d{3}|std32r_[a-f0-9]{8}_b\d{3}_s\d{2}|std32t_[a-f0-9]{8}_b\d{3}_s\d{2}_t\d{2})\.csv$', re.I)
  found={}
  for folder in scan_dirs:
   for f in folder.rglob('*.csv'):
