@@ -131,6 +131,7 @@ def build_rescue_plan(root: Path, parents: list[int], max_requests: int,
     ).encode()).hexdigest()
     tag = signature[:8]
     frame = pd.DataFrame(recs)
+    frame["block"] = list(range(len(frame)))
     frame["task_name"] = [
         f"STD32R_{tag}_B{int(r.parent_block):03d}_S{int(r.recovery_part):02d}"
         for r in frame.itertuples(index=False)
@@ -216,8 +217,8 @@ def main():
     ee.Initialize(project=stage.PROJECT)
     check_parent_failures(ee, root, parents)
     stage.verify_assets.calendar = root
-    stage.verify_assets(ee, frame, set(map(int, frame.index)))
-    selected = stage.parse_blocks(args.parts, set(map(int, frame.index)))
+    selected = stage.parse_blocks(args.parts, set(map(int, frame.block)))
+    stage.verify_assets(ee, frame, selected)
     recent = ee.data.getTaskList()
     remote = {}
     for entry in recent:
