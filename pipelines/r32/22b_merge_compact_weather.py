@@ -151,7 +151,7 @@ def main():
    for r in second.itertuples(index=False)
   ])
   scan_dirs.append(a.retry_csv_root)
- pattern=re.compile(r'^(std32c_[a-f0-9]{8}_b\d{3}|std32r_[a-f0-9]{8}_b\d{3}_s\d{2}|std32t_[a-f0-9]{8}_b\d{3}_s\d{2}_t\d{2})\.csv
+ pattern=re.compile(r'^(std32c_[a-f0-9]{8}_b\d{3}|std32r_[a-f0-9]{8}_b\d{3}_s\d{2}|std32t_[a-f0-9]{8}_b\d{3}_s\d{2}_t\d{2})\.csv$', re.I)
  found={}
  for folder in scan_dirs:
   for f in folder.rglob('*.csv'):
