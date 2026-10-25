@@ -203,6 +203,32 @@ def analyze(data,base,validation,block_cells,seed,bootstrap_reps,
                 "CI_note":"Training spatial-block sandwich; blocks not proven independent storms",
             })
         print(f"[{validation}] {name} test_loss={loss_te:.7f} training_blocks={ng}",flush=True)
+    # Physically interpretable marginal contrast: the conditional ratio for
+    # +1 TRAIN-standardized P24 at different fixed API7 levels; SM1/P3H set 0.
+    # No claim of absolute flood probability, and clipping makes this a local
+    # standardized association contrast rather than raw mm increments.
+    response=[]
+    for modelname in ("I1_P24xAPI7","I3_both_interactions"):
+        r=permodel[modelname]
+        terms=BASE_MODELS[modelname]
+        idxp=terms.index("P24")
+        idxint=terms.index("P24_x_API7")
+        for api_z in (-1.0,0.0,1.0):
+            gradient=np.zeros(len(terms))
+            gradient[idxp]=1.0
+            gradient[idxint]=api_z
+            beta=float(gradient@r["coef"])
+            stderr=float(np.sqrt(max(0.,gradient@r["cov"]@gradient)))
+            response.append({
+                "validation":validation,"model":modelname,
+                "api7_standardized_level":api_z,
+                "p24_standardized_change":1.0,
+                "log_conditional_ratio":beta,
+                "conditional_ratio":float(np.exp(np.clip(beta,-25,25))),
+                "ratio_ci_low":float(np.exp(np.clip(beta-1.96*stderr,-25,25))),
+                "ratio_ci_high":float(np.exp(np.clip(beta+1.96*stderr,-25,25))),
+                "contrast_definition":"P24 +1 SD at fixed API7 z; other weather z=0",
+            })
     comparisons=[]
     names=list(BASE_MODELS)
     for old,new in zip([names[0]]*4,names[1:]):
@@ -238,7 +264,7 @@ def analyze(data,base,validation,block_cells,seed,bootstrap_reps,
             "reps":bootstrap_reps,
             "CI_note":"Test-block bootstrap conditional on trained fits; NOT refit bootstrap"
         })
-    return pd.DataFrame(coefficients),pd.DataFrame(comparisons),meta
+    return pd.DataFrame(coefficients),pd.DataFrame(comparisons),pd.DataFrame(response),meta
 
 
 def main():
@@ -263,16 +289,18 @@ def main():
             raise RuntimeError("Unexpected Stage23 eligible sample. Audit before inference.")
     out=args.out or args.base/"stage32_interactions"
     out.mkdir(parents=True,exist_ok=True)
-    tables,coefs,transform={},[],[]
+    tables,coefs,responses,transform={},[],[],{}
     for validation in (RANGE if args.validation=="all" else (args.validation,)):
-        beta,gain,params=analyze(data,args.base,validation,args.block_cells,args.seed,
-                                 args.bootstrap_reps,args.ridge)
+        beta,gain,response,params=analyze(data,args.base,validation,args.block_cells,args.seed,
+                                          args.bootstrap_reps,args.ridge)
         coefs.append(beta)
+        responses.append(response)
         tables[validation]=gain
         transform[validation]=params
     prefix="_smoke"+str(args.max_strata) if args.max_strata else ""
     pd.concat(coefs,ignore_index=True).to_csv(out/f"25_interaction_cluster_ci{prefix}.csv",index=False)
     pd.concat(tables.values(),ignore_index=True).to_csv(out/f"25_heldout_paired_gain_ci{prefix}.csv",index=False)
+    pd.concat(responses,ignore_index=True).to_csv(out/f"25_conditional_response_contrasts{prefix}.csv",index=False)
     (out/f"25_transform_manifest{prefix}.json").write_text(
         json.dumps({"model_terms":BASE_MODELS,"scaling":transform,"eligibility":after,
                     "ridge":args.ridge,"block_cells":args.block_cells,
