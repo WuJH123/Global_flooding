@@ -67,3 +67,13 @@ def test_22c_rejects_wrong_expected_onset_count(tmp_path):
     path=synthetic(tmp_path)
     with pytest.raises(RuntimeError,match="onset_days"):
         audit_mod.audit(path,tmp_path/"badqc",expected_rows=7,expected_onsets=4)
+
+
+
+def test_22c_uses_explicit_quoted_duckdb_reserved_aliases():
+    """Guard Windows/older DuckDB: unquoted rows/days aliases can fail parsing."""
+    content = SCRIPT.read_text(encoding="utf-8")
+    assert 'COUNT(*) AS "rows"' in content
+    assert 'COUNT(*) AS "days"' in content
+    assert "COUNT(*) rows," not in content
+    assert "COUNT(*) AS days," not in content

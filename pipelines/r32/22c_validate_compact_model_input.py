@@ -77,22 +77,22 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
        FROM read_parquet('{path}')
     """)
     totals=query_one(con,"""
-        SELECT COUNT(*) rows, COUNT(DISTINCT climate_id) unique_ids,
-          COUNT(DISTINCT (grid_id, "day")) unique_grid_dates,
-          COUNT(DISTINCT calendar_stratum_id) strata,
-          COUNT(DISTINCT grid_id) grids,
-          MIN(CAST("day" AS DATE)) first_day, MAX(CAST("day" AS DATE)) last_day,
-          SUM(CAST(episode_onset AS BIGINT)) onset_days,
-          SUM(CAST(reported_non_onset_day AS BIGINT)) continuing_days,
-          SUM(risk_candidate) pre_weather_risk_days,
-          SUM(CASE WHEN model_valid=0 THEN 1 ELSE 0 END) bad_model_weather_days,
-          SUM(CASE WHEN all_weather_valid=0 THEN 1 ELSE 0 END) bad_any_weather_days,
-          SUM(CASE WHEN episode_onset=1 AND model_valid=0 THEN 1 ELSE 0 END) bad_weather_onsets,
-          SUM(CASE WHEN risk_candidate=1 AND model_valid=0 THEN 1 ELSE 0 END) bad_weather_risk_days,
-          SUM(CASE WHEN episode_onset=1 AND reported_non_onset_day=1 THEN 1 ELSE 0 END) onset_continuing_conflict,
-          SUM(CASE WHEN episode_onset=1 AND reported_flood_day=0 THEN 1 ELSE 0 END) onset_not_reported,
-          SUM(CASE WHEN y_episode_onset<>episode_onset OR eligible_risk_day<>risk_candidate THEN 1 ELSE 0 END) inconsistent_model_flags,
-          SUM(CASE WHEN CAST("day" AS DATE) IS NULL OR climate_id IS NULL OR grid_id IS NULL OR calendar_stratum_id IS NULL THEN 1 ELSE 0 END) invalid_keys
+        SELECT COUNT(*) AS "rows", COUNT(DISTINCT climate_id) AS unique_ids,
+          COUNT(DISTINCT (grid_id, "day")) AS unique_grid_dates,
+          COUNT(DISTINCT calendar_stratum_id) AS strata,
+          COUNT(DISTINCT grid_id) AS grids,
+          MIN(CAST("day" AS DATE)) AS first_day, MAX(CAST("day" AS DATE)) AS last_day,
+          SUM(CAST(episode_onset AS BIGINT)) AS onset_days,
+          SUM(CAST(reported_non_onset_day AS BIGINT)) AS continuing_days,
+          SUM(risk_candidate) AS pre_weather_risk_days,
+          SUM(CASE WHEN model_valid=0 THEN 1 ELSE 0 END) AS bad_model_weather_days,
+          SUM(CASE WHEN all_weather_valid=0 THEN 1 ELSE 0 END) AS bad_any_weather_days,
+          SUM(CASE WHEN episode_onset=1 AND model_valid=0 THEN 1 ELSE 0 END) AS bad_weather_onsets,
+          SUM(CASE WHEN risk_candidate=1 AND model_valid=0 THEN 1 ELSE 0 END) AS bad_weather_risk_days,
+          SUM(CASE WHEN episode_onset=1 AND reported_non_onset_day=1 THEN 1 ELSE 0 END) AS onset_continuing_conflict,
+          SUM(CASE WHEN episode_onset=1 AND reported_flood_day=0 THEN 1 ELSE 0 END) AS onset_not_reported,
+          SUM(CASE WHEN y_episode_onset<>episode_onset OR eligible_risk_day<>risk_candidate THEN 1 ELSE 0 END) AS inconsistent_model_flags,
+          SUM(CASE WHEN CAST("day" AS DATE) IS NULL OR climate_id IS NULL OR grid_id IS NULL OR calendar_stratum_id IS NULL THEN 1 ELSE 0 END) AS invalid_keys
         FROM daily
     """)
 
@@ -121,28 +121,28 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
     """)
     stratum_source=f"read_parquet('{strata_path}')"
     retention=query_one(con,f"""
-        SELECT COUNT(*) n_strata,
-          SUM(CAST(eligible AS INTEGER)) eligible_strata,
-          SUM(CASE WHEN eligible THEN risk_days ELSE 0 END) eligible_model_days,
-          SUM(CASE WHEN eligible THEN risk_onsets ELSE 0 END) eligible_model_onsets,
-          SUM(CASE WHEN NOT eligible THEN original_onsets ELSE 0 END) dropped_onsets,
-          SUM(CASE WHEN NOT eligible AND missing_model_weather_days>0 THEN 1 ELSE 0 END) strata_dropped_for_weather,
-          SUM(CASE WHEN NOT eligible AND risk_days<2 THEN 1 ELSE 0 END) strata_fewer_than_two_risk_days,
-          SUM(CASE WHEN NOT eligible AND risk_onsets=risk_days AND risk_days>0 THEN 1 ELSE 0 END) strata_all_onset_days,
-          SUM(CASE WHEN NOT eligible AND risk_onsets=0 THEN 1 ELSE 0 END) strata_no_onsets
+        SELECT COUNT(*) AS n_strata,
+          SUM(CAST(eligible AS INTEGER)) AS eligible_strata,
+          SUM(CASE WHEN eligible THEN risk_days ELSE 0 END) AS eligible_model_days,
+          SUM(CASE WHEN eligible THEN risk_onsets ELSE 0 END) AS eligible_model_onsets,
+          SUM(CASE WHEN NOT eligible THEN original_onsets ELSE 0 END) AS dropped_onsets,
+          SUM(CASE WHEN NOT eligible AND missing_model_weather_days>0 THEN 1 ELSE 0 END) AS strata_dropped_for_weather,
+          SUM(CASE WHEN NOT eligible AND risk_days<2 THEN 1 ELSE 0 END) AS strata_fewer_than_two_risk_days,
+          SUM(CASE WHEN NOT eligible AND risk_onsets=risk_days AND risk_days>0 THEN 1 ELSE 0 END) AS strata_all_onset_days,
+          SUM(CASE WHEN NOT eligible AND risk_onsets=0 THEN 1 ELSE 0 END) AS strata_no_onsets
         FROM {stratum_source}
     """)
     # Snapshot of year coverage and whether dropped onsets are concentrated
     # during the early/late observation window.
     annual=con.execute(f"""
-        SELECT year,COUNT(*) n_strata,
-          SUM(days_total) days_total, SUM(original_onsets) original_onsets,
-          SUM(risk_days) pre_weather_risk_days,
-          SUM(missing_model_weather_days) bad_model_weather_risk_days,
-          SUM(CAST(eligible AS INTEGER)) eligible_strata,
-          SUM(CASE WHEN eligible THEN risk_days ELSE 0 END) eligible_days,
-          SUM(CASE WHEN eligible THEN risk_onsets ELSE 0 END) eligible_onsets,
-          SUM(CASE WHEN NOT eligible THEN original_onsets ELSE 0 END) lost_onsets
+        SELECT year,COUNT(*) AS n_strata,
+          SUM(days_total) AS days_total, SUM(original_onsets) AS original_onsets,
+          SUM(risk_days) AS pre_weather_risk_days,
+          SUM(missing_model_weather_days) AS bad_model_weather_risk_days,
+          SUM(CAST(eligible AS INTEGER)) AS eligible_strata,
+          SUM(CASE WHEN eligible THEN risk_days ELSE 0 END) AS eligible_days,
+          SUM(CASE WHEN eligible THEN risk_onsets ELSE 0 END) AS eligible_onsets,
+          SUM(CASE WHEN NOT eligible THEN original_onsets ELSE 0 END) AS lost_onsets
         FROM {stratum_source}
         GROUP BY year ORDER BY year
     """).fetchdf()
@@ -156,11 +156,11 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
     pd.DataFrame([{"feature":k,"invalid_or_missing_days":int(v)} for k,v in stats.items()]).to_csv(
         out/"22c_weather_missing_by_field.csv",index=False,encoding="utf-8-sig")
     per_year=con.execute("""
-        SELECT year,COUNT(*) AS days,
-         SUM(CASE WHEN model_valid=0 THEN 1 ELSE 0 END) bad_model_weather_days,
-         SUM(CASE WHEN all_weather_valid=0 THEN 1 ELSE 0 END) bad_any_weather_days,
-         SUM(episode_onset) onset_days,
-         SUM(CASE WHEN episode_onset=1 AND model_valid=0 THEN 1 ELSE 0 END) bad_weather_onsets
+        SELECT year,COUNT(*) AS "days",
+         SUM(CASE WHEN model_valid=0 THEN 1 ELSE 0 END) AS bad_model_weather_days,
+         SUM(CASE WHEN all_weather_valid=0 THEN 1 ELSE 0 END) AS bad_any_weather_days,
+         SUM(episode_onset) AS onset_days,
+         SUM(CASE WHEN episode_onset=1 AND model_valid=0 THEN 1 ELSE 0 END) AS bad_weather_onsets
         FROM daily GROUP BY year ORDER BY year
     """).fetchdf()
     per_year.to_csv(out/"22c_weather_missing_by_year.csv",index=False,encoding="utf-8-sig")
