@@ -78,10 +78,10 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
     """)
     totals=query_one(con,"""
         SELECT COUNT(*) rows, COUNT(DISTINCT climate_id) unique_ids,
-          COUNT(DISTINCT (grid_id, day)) unique_grid_dates,
+          COUNT(DISTINCT (grid_id, "day")) unique_grid_dates,
           COUNT(DISTINCT calendar_stratum_id) strata,
           COUNT(DISTINCT grid_id) grids,
-          MIN(CAST(day AS DATE)) first_day, MAX(CAST(day AS DATE)) last_day,
+          MIN(CAST("day" AS DATE)) first_day, MAX(CAST("day" AS DATE)) last_day,
           SUM(CAST(episode_onset AS BIGINT)) onset_days,
           SUM(CAST(reported_non_onset_day AS BIGINT)) continuing_days,
           SUM(risk_candidate) pre_weather_risk_days,
@@ -92,7 +92,7 @@ def audit(panel: Path, out: Path, expected_rows:int, expected_onsets:int):
           SUM(CASE WHEN episode_onset=1 AND reported_non_onset_day=1 THEN 1 ELSE 0 END) onset_continuing_conflict,
           SUM(CASE WHEN episode_onset=1 AND reported_flood_day=0 THEN 1 ELSE 0 END) onset_not_reported,
           SUM(CASE WHEN y_episode_onset<>episode_onset OR eligible_risk_day<>risk_candidate THEN 1 ELSE 0 END) inconsistent_model_flags,
-          SUM(CASE WHEN CAST(day AS DATE) IS NULL OR climate_id IS NULL OR grid_id IS NULL OR calendar_stratum_id IS NULL THEN 1 ELSE 0 END) invalid_keys
+          SUM(CASE WHEN CAST("day" AS DATE) IS NULL OR climate_id IS NULL OR grid_id IS NULL OR calendar_stratum_id IS NULL THEN 1 ELSE 0 END) invalid_keys
         FROM daily
     """)
 
