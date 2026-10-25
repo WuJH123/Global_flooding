@@ -42,6 +42,7 @@ Do NOT run Stage25 or Stage26 before the prior Stage22c status is PASS_STRUCTURE
 Outputs (`stage32_interactions`):
 - `25_interaction_cluster_ci_smoke10000.csv`: conditional relative association, coefficients, cluster-sandwich uncertainty on *training subset*.
 - `25_heldout_paired_gain_ci_smoke10000.csv`: paired test-only conditional log-loss difference CIs, block bootstrap conditioning on the fitted models.
+- `25_conditional_response_contrasts.csv`: standardized +1 SD P24 conditional response ratios at API7 = -1/0/+1 training SD, with delta-method spatial sandwich CIs. These are conditional association contrasts, not physical flood probabilities.
 - `25_transform_manifest_smoke10000.json`: feature scales, model terms, eligible sample.
 
 **Smoke subsets should not be quoted in a manuscript.** Small temporal smoke tests may lack sufficient test clusters and will explicitly fail; in that case use 50,000 strata, not an unclustered CI or silent fallback.
@@ -71,6 +72,9 @@ do **not** infer that the interaction is causal or has a universal physical thre
 Inspect:
 
 ```powershell
+Import-Csv "$BASE\stage32_interactions\25_conditional_response_contrasts.csv" |
+  Format-Table validation,model,api7_standardized_level,conditional_ratio,ratio_ci_low,ratio_ci_high -AutoSize
+
 Import-Csv "$BASE\stage32_interactions\25_interaction_cluster_ci.csv" |
   Where-Object { $_.term -like '*_x_*' } |
   Format-Table validation,model,term,beta,beta_ci_low,beta_ci_high -AutoSize
