@@ -186,7 +186,7 @@ def analyze(data,base,validation,block_cells,seed,bootstrap_reps,
         te=sorted_groups(X,y,ids,spatial,test)
         beta,se,cov,ng,loss_tr,loss_te,per=infer_one(tr,te,terms,ridge)
         permodel[name]={"train":tr,"test":te,"coef":beta,"se":se,
-                        "train_loss":loss_tr,"test_loss":loss_te,
+                        "train_loss":loss_tr,"test_loss":loss_te,"cov":cov,
                         "per_stratum":per,"n_spatial_clusters":ng}
         for i,term in enumerate(terms):
             value=float(beta[i])
