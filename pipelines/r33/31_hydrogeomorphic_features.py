@@ -13,7 +13,6 @@ import argparse,json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from pyproj import Transformer
 
 GRID=20000.0
 
