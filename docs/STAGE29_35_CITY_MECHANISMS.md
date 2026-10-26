@@ -73,7 +73,9 @@ Example, after obtaining documented REAL HAND and DEM:
 
 Example raw GAIA year-code raster (1985–2018 ONLY):
 
-    & $PY "$R33\31_hydrogeomorphic_features.py" --centers "$CENTERS" --impervious-tif "E:\Global_flooding\external\GAIA_v10.tif" --impervious-kind gaia_year_code --impervious-epoch 2018 --out "$BASE\mechanism_project\31_hydrogeomorphic_gaia2018"
+    & $PY "$R33\31_hydrogeomorphic_features.py" --centers "$CENTERS" --impervious-tif "E:\Global_flooding\external\GAIA_v10.tif" --impervious-kind gaia_year_code --impervious-epoch 2018 --gaia-landmask-tif "E:\Global_flooding\external\valid_land_mask.tif" --out "$BASE\mechanism_project\31_hydrogeomorphic_gaia2018"
+
+GAIA requires an independent VALID-LAND mask, because masked zeros and truly pervious zeros otherwise cannot be differentiated for area fractions. Obtain a validated land mask (for example JRC GHS-LAND), harmonize CRS and pixel coverage. No future GAIA extrapolation.
 
 Outputs: 31_hydrogeomorphic_grid_context.parquet/csv with valid-pixel
 coverage. Approx. 250m resampled subgrid does not imply native 30m flood
@@ -156,6 +158,8 @@ Do not claim Stage35 alone removes spatial event dependence.
   (already mostly held as CSV, no immediate re-download needed)
 - GAIA 30m impervious transition (1985–2018):
   https://developers.google.com/earth-engine/datasets/catalog/Tsinghua_FROM-GLC_GAIA_v10
+- JRC GHS-LAND valid-land context:
+  https://ghsl.jrc.ec.europa.eu/download.php
 - HydroRIVERS streams:
   https://www.hydrosheds.org/products/hydrorivers
 - MERIT Hydro DEM, upstream drainage area and flow direction:
