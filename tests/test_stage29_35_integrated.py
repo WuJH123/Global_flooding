@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pandas as pd
 import duckdb
+import pytest
 
 ROOT=Path(__file__).resolve().parents[1]
 def mod(path):
@@ -144,3 +145,61 @@ def test_35_spatiotemporal_connected_components():
     assert len(groups)==3
     assert mem.loc[0,"proxy_storm_id"]==mem.loc[1,"proxy_storm_id"]
     assert mem.loc[0,"proxy_storm_id"]!=mem.loc[2,"proxy_storm_id"]
+
+
+
+def test_30_legacy_built_m2_reconstructs_without_fraction(tmp_path):
+    """Real original GEE exports expose built_m2, not built_fraction."""
+    s=mod(Path("pipelines/r33/30_urban_context.py"))
+    root=tmp_path/"Groundsource_GHSL_2000"
+    root.mkdir()
+    rows=pd.DataFrame({
+        "grid_id":["0_0","1_0"],
+        "epoch":[2000,2000],
+        "grid_area_m2":[400_000_000,397_000_000],
+        "built_m2":[20_000_000,39_700_000],
+        "pop_total":[200,300],"pop_density":[0.5,0.75],
+        "urban_pop_share":[.6,.7],"dense_pop_share":[.4,.5],
+        "urban_area_fraction":[.9,.8],"dense_area_fraction":[.3,.4]})
+    rows.to_csv(root/"groundsource_ghsl_2000_chunk_0.csv",index=False)
+    gh,audit=s.read_ghsl(s.discover(tmp_path),{"0_0","1_0"})
+    assert np.allclose(gh.built_fraction.to_numpy(),[.05,.10])
+    assert audit.built_fraction_valid.sum()==2
+    assert audit.built_fraction_source.iloc[0]=="built_m2_over_actual_grid_area"
+    assert gh.built_fraction.iloc[0]!=gh.urban_area_fraction.iloc[0]
+    with pytest.raises(RuntimeError,match="coverage is incomplete"):
+        s.validate_epoch_coverage(gh,{"0_0","1_0"})
+
+
+def test_30_missing_built_raw_never_substitutes_urban_share(tmp_path):
+    s=mod(Path("pipelines/r33/30_urban_context.py"))
+    root=tmp_path/"Groundsource_GHSL_2005"
+    root.mkdir()
+    pd.DataFrame({
+        "grid_id":["a"],"epoch":[2005],
+        "pop_total":[100.],"pop_density":[200.],
+        "urban_pop_share":[.8],"dense_pop_share":[.2],
+        "urban_area_fraction":[.5],"dense_area_fraction":[.1]
+    }).to_csv(root/"groundsource_ghsl_2005_chunk_0.csv",index=False)
+    gh,audit=s.read_ghsl(s.discover(tmp_path),{"a"})
+    assert np.isnan(gh.built_fraction.iloc[0])
+    assert audit.built_fraction_missing.sum()==1
+    assert audit.built_fraction_source.iloc[0]=="missing_built_m2_and_built_fraction"
+
+
+def test_30_built_legacy_grid_area_km2_and_invalid_range(tmp_path):
+    s=mod(Path("pipelines/r33/30_urban_context.py"))
+    root=tmp_path/"Groundsource_GHSL_2010"
+    root.mkdir()
+    path=root/"groundsource_ghsl_2010_chunk_0.csv"
+    base={"grid_id":["g1"],"pop_total":[500.],"pop_density":[200.],
+          "urban_pop_share":[.4],"dense_pop_share":[.2],
+          "urban_area_fraction":[.5],"dense_area_fraction":[.1],
+          "grid_area_km2":[399.9],"built_m2":[199_950_000.]}
+    pd.DataFrame(base).to_csv(path,index=False)
+    gh,log=s.read_ghsl([path],{"g1"})
+    assert abs(gh.built_fraction.iloc[0]-.5)<1e-10
+    base["built_m2"]=[500_000_000.]
+    pd.DataFrame(base).to_csv(path,index=False)
+    with pytest.raises(ValueError,match="built_fraction outside"):
+        s.read_ghsl([path],{"g1"})
