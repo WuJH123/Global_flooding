@@ -54,7 +54,7 @@ def geom_stats(hand,dem,impervious,coverage_threshold=.7):
                                            if ok.mean()>=coverage_threshold else np.nan)
     return res
 
-def raster_tile(path,x,y,pixels,kind):
+def raster_tile(path,x,y,pixels,kind,unmasked=False):
     # Lazy optional geo dependency; data-free tests do not require rasterio.
     import rasterio
     from rasterio.vrt import WarpedVRT
@@ -68,8 +68,8 @@ def raster_tile(path,x,y,pixels,kind):
             l,b,r,t=x*GRID,y*GRID,(x+1)*GRID,(y+1)*GRID
             win=from_bounds(l,b,r,t,transform=vrt.transform)
             arr=vrt.read(1,window=win,out_shape=(pixels,pixels),
-                         resampling=algo,masked=True)
-            vals=arr.astype("float64").filled(np.nan)
+                         resampling=algo,masked=not unmasked)
+            vals=(np.asarray(arr,dtype="float64") if unmasked else arr.astype("float64").filled(np.nan))
             return vals
 
 def nearest_rivers(centers,vector_path,max_features=3000000):
@@ -103,6 +103,8 @@ def main():
     p.add_argument("--impervious-tif",type=Path)
     p.add_argument("--impervious-kind",choices=("fraction","gaia_year_code"),default="fraction")
     p.add_argument("--impervious-epoch",type=int,default=2018)
+    p.add_argument("--gaia-landmask-tif",type=Path,default=None,
+                   help="Required with GAIA: independent valid-land mask (1=land,0=nonland)")
     p.add_argument("--rivers",type=Path)
     p.add_argument("--sample-pixels",type=int,default=80)
     p.add_argument("--min-valid",type=float,default=.70)
@@ -110,6 +112,10 @@ def main():
     a=p.parse_args()
     if not any([a.hand_tif,a.dem_tif,a.impervious_tif,a.rivers]):
         raise ValueError("Supply an actual raster or river-vector source")
+    if a.impervious_kind=="gaia_year_code" and not a.gaia_landmask_tif:
+        raise ValueError("Raw GAIA may mask 0/nonimpervious pixels. Supply --gaia-landmask-tif to define denominator reliably.")
+    if a.gaia_landmask_tif and not a.gaia_landmask_tif.exists():
+        raise FileNotFoundError(a.gaia_landmask_tif)
     if a.impervious_kind=="gaia_year_code" and (a.impervious_epoch<1985 or a.impervious_epoch>2018):
         raise ValueError("GAIA annual observations are limited to 1985–2018; refuse future extrapolation")
     if a.hand_tif and not a.hand_provenance:
@@ -133,10 +139,13 @@ def main():
                 if not path.exists():raise FileNotFoundError(path)
                 vals[field]=raster_tile(path,int(r.grid_x),int(r.grid_y),
                                         a.sample_pixels,
-                                        "categorical" if field=="impervious" and a.impervious_kind=="gaia_year_code" else kind)
+                                        "categorical" if field=="impervious" and a.impervious_kind=="gaia_year_code" else kind,
+                                        unmasked=field=="impervious" and a.impervious_kind=="gaia_year_code")
                 if field=="impervious" and a.impervious_kind=="gaia_year_code":
                     source=vals[field]
-                    valid=np.isfinite(source)&(source>=0)&(source<=34)
+                    land=raster_tile(a.gaia_landmask_tif,int(r.grid_x),int(r.grid_y),
+                                     a.sample_pixels,"categorical")
+                    valid=np.isfinite(source)&(source>=0)&(source<=34)&np.isfinite(land)&(land>0.5)
                     year=2019-source
                     vals[field]=np.where(valid,((source>0)&(year<=a.impervious_epoch)).astype(float),np.nan)
             else:vals[field]=None
@@ -160,6 +169,7 @@ def main():
         "impervious_source":str(a.impervious_tif) if a.impervious_tif else None,
         "impervious_kind":a.impervious_kind,
         "impervious_epoch":a.impervious_epoch,
+        "gaia_valid_landmask_source":str(a.gaia_landmask_tif) if a.gaia_landmask_tif else None,
         "rivers":str(a.rivers) if a.rivers else None,
         "sample_resolution_m_approx":GRID/a.sample_pixels,
         "n_grids":len(tab),
