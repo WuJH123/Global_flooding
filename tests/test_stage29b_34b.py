@@ -141,3 +141,20 @@ def test_full_continuous_city_fit_shared_splits(tmp_path):
     _,after=m.link_complete_environment(frame,types,static,environment,features)
     assert after["retained_cities"]==239
     assert after["complete_onsets"]==478
+
+
+def test_29b_smoke_png_does_not_overwrite_production(tmp_path):
+    m=module(ROOT/"pipelines/r32/29b_interaction_ablation_surface.py")
+    rng=np.random.default_rng(5)
+    n=1000
+    raw=rng.normal(size=n)
+    terms=m.MODELS["B3_both_interactions"]
+    meta={"P24":{"train_sd":1.,"train_mean":2.},
+          "API7":{"train_sd":1.,"train_mean":2.}}
+    surface,_=m.make_surface(np.ones(len(terms))*.1,
+                             np.eye(len(terms))*.001,
+                             terms,{"P24":raw,"API7":raw+rng.normal(0,.3,n)},
+                             np.ones(n,bool),meta,"city","mean",n=7,support_min=10)
+    m.plot_surface(surface,tmp_path,"_smoke1000")
+    assert (tmp_path/"29b_surface_city_mean_smoke1000.png").is_file()
+    assert not (tmp_path/"29b_surface_city_mean.png").exists()

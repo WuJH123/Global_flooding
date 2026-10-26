@@ -177,7 +177,7 @@ def fit_one(df,base,validation,scheme,block_cells,seed,reps,surface_points=25):
               "curve_note":"conditional intensity ratio relative to training P24 median at fixed API7; C3=SM1=0"}
     return pd.DataFrame(coef),pd.DataFrame(gains),surface,curve,manifest
 
-def plot_surface(surface,out):
+def plot_surface(surface,out,suffix=""):
     """Static result chart from computed table; no synthetic values or interpolation."""
     import matplotlib
     matplotlib.use("Agg")
@@ -197,7 +197,7 @@ def plot_surface(surface,out):
         ax.set(xlabel="P24 (mm/day, 24h UTC)",ylabel="API7 (mm, antecedent index)",
                title=f"Stage29b {validation} / {scheme}: conditional surface")
         fig.tight_layout()
-        fig.savefig(out/f"29b_surface_{validation}_{scheme}.png",dpi=180)
+        fig.savefig(out/f"29b_surface_{validation}_{scheme}{suffix}.png",dpi=180)
         plt.close(fig)
 
 def main():
@@ -236,7 +236,7 @@ def main():
     surf.to_csv(out/f"29b_conditional_surface{suffix}.csv",index=False)
     pd.concat(curves,ignore_index=True).to_csv(out/f"29b_conditional_curves{suffix}.csv",index=False)
     if not a.no_plots:
-        plot_surface(surf,out)
+        plot_surface(surf,out,suffix)
     (out/f"29b_manifest{suffix}.json").write_text(json.dumps({
         "weather_sample":qc,"fits":meta,"source":str(source),
         "method":"conditional Poisson; nested interactions; same risk sets; spatial-block paired gain bootstrap",
