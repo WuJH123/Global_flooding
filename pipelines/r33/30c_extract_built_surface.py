@@ -84,20 +84,24 @@ def calculate_tile(src,tx,ty,tile_cells,source_pixel_m2,max_source_pixels):
     target_transform=Affine(GRID_M,0,x0*GRID_M,0,-GRID_M,(y0+tile_cells)*GRID_M)
     bounds=(x0*GRID_M,y0*GRID_M,(x0+tile_cells)*GRID_M,(y0+tile_cells)*GRID_M)
     left,bottom,right,top=transform_bounds("EPSG:6933",src.crs,*bounds,densify_pts=41)
-    # Crop to actual source footprint; tiles outside source have NO coverage.
-    left=max(left,src.bounds.left);right=min(right,src.bounds.right)
-    bottom=max(bottom,src.bounds.bottom);top=min(top,src.bounds.top)
+    # IMPORTANT: keep FULL target tile bounds when reading the source.
+    # GDAL average resampling can otherwise extrapolate a clipped source
+    # array beyond its footprint, falsely duplicating built area and coverage.
+    # The out-of-raster part is read boundless and explicitly masked to zero.
     shape=(tile_cells,tile_cells)
     if not all(np.isfinite([left,bottom,right,top])) or left>=right or bottom>=top:
+        return np.full(shape,np.nan,dtype=float),np.zeros(shape,dtype=float),0
+    if (right<=src.bounds.left or left>=src.bounds.right or
+        top<=src.bounds.bottom or bottom>=src.bounds.top):
         return np.full(shape,np.nan,dtype=float),np.zeros(shape,dtype=float),0
     window=from_bounds(left,bottom,right,top,transform=src.transform)
     window=window.round_offsets().round_lengths()
     # padding accommodates resampler at the source raster's edge of window
     from rasterio.windows import Window
-    col=max(0,int(window.col_off)-3)
-    row=max(0,int(window.row_off)-3)
-    cend=min(src.width,int(window.col_off+window.width)+4)
-    rend=min(src.height,int(window.row_off+window.height)+4)
+    col=int(window.col_off)-3
+    row=int(window.row_off)-3
+    cend=int(window.col_off+window.width)+4
+    rend=int(window.row_off+window.height)+4
     if cend<=col or rend<=row:
         return np.full(shape,np.nan),np.zeros(shape),0
     if (cend-col)*(rend-row)>max_source_pixels:
@@ -105,7 +109,7 @@ def calculate_tile(src,tx,ty,tile_cells,source_pixel_m2,max_source_pixels):
             "One tile needs too many source pixels. Lower --tile-cells "
             f"(wanted {(cend-col)*(rend-row):,} > {max_source_pixels:,})")
     view=Window(col,row,cend-col,rend-row)
-    masked=src.read(1,window=view,masked=True)
+    masked=src.read(1,window=view,masked=True,boundless=True)
     raw=np.asarray(masked.data,dtype=np.float32)
     valid=(~np.ma.getmaskarray(masked)) & np.isfinite(raw) & (raw>=0)
     # GHSL built m2 should not exceed its own 100/1000m area.
