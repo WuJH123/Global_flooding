@@ -168,6 +168,36 @@ def compute_grid(src,centers,tile_cells=4,min_coverage=.95,
         raise RuntimeError("Raster aggregate lost/duplicated grid IDs")
     return result.reset_index(drop=True)
 
+def aggregate_city_context(grid_table,overlap_csv):
+    """Area-overlap-weighted GRID CONTEXT, not city-footprint built area.
+
+    Accurate within-city built surface must intersect ORIGINAL 100m pixels
+    with UCDB city polygons. Twenty-km grid overlap weights approximate
+    a city-level context ONLY; no false city built-up totals.
+    """
+    links=pd.read_csv(overlap_csv,dtype={"grid_id":str,"city_id":str})
+    needed={"grid_id","city_id","overlap_km2"}
+    if not needed.issubset(links):raise ValueError("UCDB overlap CSV missing "+str(needed))
+    links=links[list(needed)].copy()
+    if links.duplicated(["grid_id","city_id"]).any():
+        raise ValueError("Duplicate city-grid overlap links")
+    links["overlap_km2"]=pd.to_numeric(links.overlap_km2,errors="coerce")
+    links=links.loc[links.overlap_km2.gt(0)].copy()
+    g=links.merge(grid_table[["grid_id","built_fraction"]],
+                  on="grid_id",how="inner",validate="many_to_one")
+    def city_row(block):
+        good=block.built_fraction.notna()
+        total=block.overlap_km2.sum()
+        valid=block.loc[good,"overlap_km2"].sum()
+        mean=(np.average(block.loc[good,"built_fraction"],
+                         weights=block.loc[good,"overlap_km2"])
+              if good.any() else np.nan)
+        return pd.Series({"overlap_weighted_grid_built_fraction":mean,
+                          "overlap_coverage_fraction":valid/total if total>0 else np.nan,
+                          "n_intersecting_20km_grids":block.grid_id.nunique()})
+    return g.groupby("city_id",sort=True).apply(city_row,include_groups=False).reset_index()
+
+
 def main():
     a=argparse.ArgumentParser(description=__doc__)
     a.add_argument("--raster",type=Path,required=True)
@@ -176,6 +206,8 @@ def main():
     a.add_argument("--base",type=Path,default=Path(r"E:\Global_flooding"))
     a.add_argument("--out",type=Path)
     a.add_argument("--inspect",action="store_true")
+    a.add_argument("--city-overlap-csv",type=Path,
+                   help="Optional: 2030 CITY CONTEXT from already verified UCDB overlaps; not city-accurate built totals")
     a.add_argument("--tile-cells",type=int,default=4)
     a.add_argument("--min-coverage",type=float,default=.95)
     a.add_argument("--max-source-pixels",type=int,default=16_000_000)
@@ -188,7 +220,7 @@ def main():
     centers=read_centers(args.centers)
     if args.max_grids:
         if args.max_grids<1:raise ValueError("--max-grids must be positive")
-        centers=centers.head(args.max_grids).copy()
+        centers=centers.iloc[np.linspace(0,len(centers)-1,min(args.max_grids,len(centers)),dtype=int)].copy()
     import rasterio
     with rasterio.open(args.raster) as src:
         d=compute_grid(src,centers,args.tile_cells,args.min_coverage,
@@ -201,6 +233,12 @@ def main():
     destination=out/f"30c_built_grid_{information['epoch']}{suffix}.parquet"
     d.to_parquet(destination,index=False)
     d.to_csv(out/f"30c_built_grid_{information['epoch']}{suffix}_qc.csv",index=False)
+    if args.city_overlap_csv:
+        context=aggregate_city_context(d,args.city_overlap_csv)
+        context["epoch"]=information["epoch"]
+        context["temporal_kind"]=information["kind"]
+        context.to_csv(out/f"30c_city_grid_context_{information['epoch']}{suffix}.csv",index=False)
+        context.to_parquet(out/f"30c_city_grid_context_{information['epoch']}{suffix}.parquet",index=False)
     report={"epoch":information["epoch"],"temporal_kind":information["kind"],
             "input_raster":str(args.raster),
             "source_pixel_m2":information["source_pixel_m2"],
