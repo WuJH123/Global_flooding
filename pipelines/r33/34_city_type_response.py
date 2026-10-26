@@ -108,6 +108,9 @@ def main():
     p.add_argument("--aggregation",choices=("mean","max"),default="mean")
     p.add_argument("--validation",choices=("temporal","spatial","city","all"),default="all")
     p.add_argument("--max-strata",type=int)
+    p.add_argument("--type-epoch",type=int,default=2020)
+    p.add_argument("--allow-retrospective-types",action="store_true",
+                   help="Exploratory only: allow 2020 city environment class on pre-2020 flood records")
     p.add_argument("--exclude-low-support-cities",action="store_true")
     p.add_argument("--seed",type=int,default=2026)
     p.add_argument("--block-cells",type=int,default=25)
@@ -119,6 +122,8 @@ def main():
     path=a.panel_path or a.base/"standard_calendar_22_compact"/"22_standard_daily_with_climate.parquet"
     static=a.static_path or a.base/"mechanism_project"/"05_static_merged"/"grid_static_context_m3.parquet"
     frame,qc=s27.load_common(path,a.max_strata)
+    if not a.allow_retrospective_types:
+        frame=frame.loc[frame.year.ge(a.type_epoch)].copy()
     data=prepare(frame,read(a.city_types),read(static),a.exclude_low_support_cities)
     coefs,comparison,meta=[],[],[]
     for mode in (("temporal","spatial","city") if a.validation=="all" else (a.validation,)):
@@ -132,6 +137,7 @@ def main():
     (out/f"34_type_response_manifest{suf}.json").write_text(json.dumps({
         "weather":qc,"typed_grid_days":len(data),"typed_strata":data.calendar_stratum_id.nunique(),
         "typed_onsets":int(data.episode_onset.sum()),"validation":meta,
+        "type_epoch":a.type_epoch,"allow_retrospective_types":a.allow_retrospective_types,
         "warning":"Type membership from covariates only, but UCDB M3 cities are positively selected; not general global flood risk."
     },ensure_ascii=False,indent=2),encoding="utf-8")
     print("[DONE]",out)
