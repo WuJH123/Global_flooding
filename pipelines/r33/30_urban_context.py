@@ -145,6 +145,73 @@ def validate_epoch_coverage(ghsl,valid_ids,allow_incomplete=False):
     return errors
 
 
+
+def merge_raster_built(ghsl,paths,allow_projected=False):
+    """Attach only year-matched audited Stage30c outputs.
+
+    Never backfill 2030 values into 2020 historical rows. Existing GHSL
+    built_fraction is preferred when already valid; raster fills missing only.
+    """
+    if not paths:
+        return ghsl, {"n_sources":0,"n_filled_from_raster":0,"epochs":[]}
+    blocks=[]
+    used_years=[]
+    for path in paths:
+        path=Path(path)
+        if "_SMOKE" in path.name.upper():
+            raise ValueError("Refuse smoke-test raster table for production integration")
+        if not path.is_file():raise FileNotFoundError(path)
+        r=pd.read_parquet(path)
+        required={"grid_id","epoch","built_fraction","temporal_kind","source_coverage_fraction"}
+        if not required.issubset(r.columns):
+            raise ValueError(f"{path} missing expected Stage30c columns {sorted(required-set(r.columns))}")
+        if r[["grid_id","epoch"]].isna().any().any() or r.duplicated(["grid_id","epoch"]).any():
+            raise RuntimeError(f"Duplicated/null grid-year keys in raster {path}")
+        years=sorted(pd.to_numeric(r.epoch,errors="raise").unique().tolist())
+        if len(years)!=1:raise ValueError("One raster file must have exactly one epoch")
+        yr=int(years[0])
+        if yr>=2030:raise ValueError("E2030 is a PROJECTION; not a 2000–2025 historical epoch. Do not backfill.")
+        if yr==2025 and not allow_projected:
+            raise ValueError("E2025 is extrapolated: pass --allow-projected-built-2025 explicitly")
+        if yr not in YEARS:raise ValueError(f"Built raster year {yr} not part of M3 master epochs")
+        if len(r)!=ghsl.loc[ghsl.epoch.eq(yr),"grid_id"].nunique():
+            raise RuntimeError(f"Stage30c incomplete epoch {yr}: possible smoke or missing grids")
+        expected=set(ghsl.loc[ghsl.epoch.eq(yr),"grid_id"].astype(str))
+        if set(r.grid_id.astype(str))!=expected:
+            raise RuntimeError(f"Stage30c grid IDs do not match GHSL M3 epoch {yr}")
+        if not r.temporal_kind.eq("historical_reconstruction" if yr<=2020 else "scenario").all():
+            raise ValueError(f"Invalid temporal_kind for epoch {yr}")
+        val=pd.to_numeric(r.built_fraction,errors="coerce")
+        cov=pd.to_numeric(r.source_coverage_fraction,errors="coerce")
+        if (val.notna()&~val.between(-1e-6,1.01)).any():
+            raise ValueError(f"Built raster fraction out of range {path}")
+        if (cov.notna()&~cov.between(0,1.00001)).any():
+            raise ValueError(f"Invalid source coverage {path}")
+        r=r[["grid_id","epoch","built_fraction"]].copy()
+        r["grid_id"]=r.grid_id.astype(str)
+        r["epoch"]=r.epoch.astype(int)
+        r["built_fraction"]=pd.to_numeric(r.built_fraction,errors="coerce")
+        used_years.append(yr);blocks.append(r)
+    if len(set(used_years))!=len(used_years):
+        raise ValueError("Duplicate stage30c epoch passed to --built-grid-parquet")
+    joined=pd.concat(blocks,ignore_index=True)
+    if joined.duplicated(["grid_id","epoch"]).any():
+        raise RuntimeError("Duplicate grid-year keys across raster files")
+    m=ghsl.merge(joined,on=["grid_id","epoch"],how="left",validate="one_to_one",
+                 suffixes=("","_raster"))
+    supplied=pd.to_numeric(m.built_fraction,errors="coerce")
+    external=pd.to_numeric(m.built_fraction_raster,errors="coerce")
+    pair=supplied.notna()&external.notna()
+    if pair.any() and (supplied[pair]-external[pair]).abs().gt(.02).any():
+        raise ValueError("GHSL CSV and year-matched raster differ by >0.02 in built fraction")
+    filled=supplied.isna()&external.notna()
+    m["built_fraction"]=supplied.fillna(external)
+    m=m.drop(columns=["built_fraction_raster"])
+    return m,{"n_sources":len(paths),"n_filled_from_raster":int(filled.sum()),
+              "epochs":sorted(used_years),"projected_2025_permitted":allow_projected}
+
+
+
 def grid_to_city(static,links=None):
     if links is None:
         link=static[["grid_id","city_id"]].dropna().copy()
@@ -204,6 +271,9 @@ def main():
     p.add_argument("--koppen-code-column",default="koppen_code")
     p.add_argument("--out",type=Path)
     p.add_argument("--allow-incomplete-epochs",action="store_true")
+    p.add_argument("--built-grid-parquet",type=Path,action="append",default=[],
+                   help="Year-matched complete Stage30c built-surface table; repeat per epoch")
+    p.add_argument("--allow-projected-built-2025",action="store_true")
     a=p.parse_args()
     root=a.ghsl_root or a.base/"Groundsource_all"
     static_file=a.static_path or a.base/"mechanism_project"/"05_static_merged"/"grid_static_context_m3.parquet"
@@ -215,6 +285,7 @@ def main():
         raise RuntimeError("Static M3 grid_id null/duplicate")
     ghsl,byfile=read_ghsl(discover(root),set(static.grid_id))
     epoch_errors=validate_epoch_coverage(ghsl,set(static.grid_id),a.allow_incomplete_epochs)
+    ghsl,built_raster_qc=merge_raster_built(ghsl,a.built_grid_parquet,a.allow_projected_built_2025)
     if not ghsl.built_fraction.notna().any():
         print("[WARNING] No valid GHSL built_fraction source: leaving NaN; "
               "urban_area_fraction is NOT built_fraction.")
@@ -247,6 +318,7 @@ def main():
               "city_weight_mode":mode,
               "epoch_coverage_issues":epoch_errors,
               "built_fraction_valid_grid_epochs":int(ghsl.built_fraction.notna().sum()),
+              "built_raster_integration":built_raster_qc,
               "built_fraction_absent_means_not_measured":True,
               "note":"Population and built_fraction are context indicators. No inferred drainage, HAND, or city-population totals from 20km overlap."}
     (out/"30_manifest.json").write_text(json.dumps(overview,ensure_ascii=False,indent=2),encoding="utf-8")
