@@ -33,8 +33,8 @@ PREFERRED=("impervious_surface_weighted_hand_lt2_share",
 
 def hash_test(ids,seed=2026,frac=.2):
     return np.array([int.from_bytes(hashlib.blake2b(
-        (str(v)+"_"+str(seed)).encode(),digest_size=8).digest(),"little")%1000
-        <int(frac*1000) for v in ids],bool)
+        (str(v)+"_"+str(seed)).encode(),digest_size=8).digest(),"little")%100
+        <int(frac*100) for v in ids],bool)
 
 def spearman(a,b):
     x=pd.Series(a).rank().to_numpy(dtype=float)
