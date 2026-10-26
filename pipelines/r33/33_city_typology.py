@@ -47,7 +47,7 @@ def types(data,features,seed=2026,k_min=2,k_max=6):
     x=importlib.util.module_from_spec(spec);spec.loader.exec_module(x)
     train=~x.hash_test(data.city_id.astype(str),seed)
     if train.sum()<max(60,k_max*10):raise RuntimeError("Insufficient training cities")
-    X=data[features].apply(pd.to_numeric,errors="coerce").to_numpy(dtype=float)
+    X=data[features].apply(pd.to_numeric,errors="coerce").to_numpy(dtype=float).copy()
     X[~np.isfinite(X)]=np.nan
     med=np.nanmedian(X[train],axis=0)
     if not np.isfinite(med).all():raise RuntimeError("Training-only median not available")
@@ -76,7 +76,6 @@ def types(data,features,seed=2026,k_min=2,k_max=6):
         result["low_support_city"]=data.grid_count_primary.fillna(0).lt(2)
     else:result["low_support_city"]=True
     stats=data[["city_id"]+features].merge(result,on="city_id",validate="one_to_one")
-    stats.to_numpy if False else None
     profile=stats.groupby("environment_type_id",observed=True)[features].median().reset_index()
     counts=stats.groupby("environment_type_id",observed=True).size().rename("cities").reset_index()
     profile=profile.merge(counts,on="environment_type_id")
