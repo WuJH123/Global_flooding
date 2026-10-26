@@ -30,34 +30,120 @@ def discover(root):
     return sorted(paths)
 
 def read_ghsl(paths,valid_grid_ids):
+    """Read both the exported legacy GEE schema and newer GHSL tables.
+
+    Older project CSVs exported built_m2, grid_area_m2 / grid_area_km2,
+    but NOT necessarily built_fraction. Calculate built_fraction only when
+    the original built area and actual grid area are BOTH available.
+    urban_area_fraction is a GHS-SMOD class share and MUST NOT be renamed
+    or copied to GHSL built surface fraction.
+    """
     frames=[]
     qc=[]
+    core=set(GHSL)-{"built_fraction"}
     for path in paths:
         match=re.search(r"ghsl_(\d{4})_chunk_",path.name,re.I)
+        if match is None:
+            raise ValueError(f"Unrecognized GHSL filename: {path}")
         epoch=int(match.group(1))
-        raw=pd.read_csv(path,low_memory=False,dtype={"grid_id":str})
-        needed={"grid_id",*GHSL}
+        raw=pd.read_csv(path,low_memory=False,dtype={"grid_id":"string"})
+        raw.columns=[str(c).lstrip("\ufeff").strip() for c in raw.columns]
+        needed={"grid_id",*core}
         if not needed.issubset(raw.columns):
             raise ValueError(f"{path} missing GHSL fields: {sorted(needed-set(raw.columns))}")
-        if "epoch" in raw and not raw.epoch.dropna().eq(epoch).all():
-            raise RuntimeError(f"Incorrect epoch in {path}")
+        if "epoch" in raw.columns:
+            values=pd.to_numeric(raw.epoch,errors="coerce")
+            if ((values.notna())&(values.ne(epoch))).any():
+                raise RuntimeError(f"Epoch values disagree with filename {path}")
         if raw.grid_id.isna().any() or raw.grid_id.duplicated().any():
             raise RuntimeError(f"Duplicate/null IDs in GHSL chunk {path}")
-        raw=raw.loc[raw.grid_id.isin(valid_grid_ids),["grid_id",*GHSL]].copy()
-        raw["epoch"]=epoch
+
+        raw=raw.loc[raw.grid_id.isin(valid_grid_ids)].copy()
+        source="not_available"
+        available_area=raw.get("grid_area_m2")
+        if available_area is None:
+            area=pd.Series(np.nan,index=raw.index,dtype=float)
+        else:
+            area=pd.to_numeric(available_area,errors="coerce").astype(float)
+        if "grid_area_km2" in raw.columns:
+            from_km2=pd.to_numeric(raw["grid_area_km2"],errors="coerce")*1e6
+            area=area.where(np.isfinite(area)&area.gt(0),from_km2)
+
+        derived=pd.Series(np.nan,index=raw.index,dtype=float)
+        if "built_m2" in raw.columns:
+            built=pd.to_numeric(raw["built_m2"],errors="coerce").astype(float)
+            if built.lt(0).any():
+                raise ValueError(f"Negative built_m2 in {path}")
+            mask=np.isfinite(built)&np.isfinite(area)&area.gt(0)
+            derived.loc[mask]=built.loc[mask]/area.loc[mask]
+            if not mask.all():
+                source="built_m2_unusable_area_for_some_rows"
+            else:
+                source="built_m2_over_actual_grid_area"
+
+        if "built_fraction" in raw.columns:
+            original=pd.to_numeric(raw["built_fraction"],errors="coerce").astype(float)
+            overlap=original.notna()&derived.notna()
+            if overlap.any():
+                delta=(original.loc[overlap]-derived.loc[overlap]).abs()
+                if delta.gt(0.02).any():
+                    raise ValueError(
+                        f"Conflicting supplied built_fraction vs built_m2/area in {path}; "
+                        f"maximum absolute difference={delta.max():.6f}"
+                    )
+            raw["built_fraction"]=original.fillna(derived)
+            source=("existing_built_fraction" if derived.notna().sum()==0
+                    else "existing_or_derived_built_fraction")
+        else:
+            raw["built_fraction"]=derived
+
+        if "built_m2" not in raw.columns and "built_fraction" not in pd.read_csv(path,nrows=0).columns:
+            source="missing_built_m2_and_built_fraction"
+
         for name in GHSL:
             raw[name]=pd.to_numeric(raw[name],errors="coerce")
         for name in FRACTIONS:
             bad=raw[name].notna()&~raw[name].between(-1e-6,1.01)
-            if bad.any():raise ValueError(f"{name} outside [0,1] in {path}: {int(bad.sum())}")
+            if bad.any():
+                raise ValueError(f"{name} outside [0,1] in {path}: {int(bad.sum())}")
         for name in ["pop_total","pop_density"]:
-            if raw[name].lt(0).any():raise ValueError(f"Negative population in {path}")
-        qc.append({"file":str(path),"epoch":epoch,"m3_rows":len(raw)})
-        frames.append(raw)
+            if raw[name].lt(0).any():
+                raise ValueError(f"Negative population in {path}")
+        raw["epoch"]=epoch
+        qc.append({"file":str(path),"epoch":epoch,"m3_rows":len(raw),
+                   "built_fraction_source":source,
+                   "built_fraction_valid":int(raw.built_fraction.notna().sum()),
+                   "built_fraction_missing":int(raw.built_fraction.isna().sum())})
+        frames.append(raw[["grid_id",*GHSL,"epoch"]])
+
     result=pd.concat(frames,ignore_index=True)
     if result.duplicated(["grid_id","epoch"]).any():
         raise RuntimeError("Duplicate grid-epoch across CSV chunks")
     return result,pd.DataFrame(qc)
+
+
+def validate_epoch_coverage(ghsl,valid_ids,allow_incomplete=False):
+    """Six epochs of exactly the M3 master grid set are expected for production."""
+    expected=set(valid_ids)
+    errors=[]
+    for year in YEARS:
+        actual=set(ghsl.loc[ghsl.epoch.eq(year),"grid_id"])
+        missing=expected-actual
+        extra=actual-expected
+        if missing or extra:
+            errors.append({
+                "year":year,"expected":len(expected),"found":len(actual),
+                "missing":len(missing),"extra":len(extra),
+                "example_missing_ids":sorted(missing)[:5]
+            })
+    if errors and not allow_incomplete:
+        raise RuntimeError(
+            "Historical GHSL grid-epoch coverage is incomplete: "
+            +json.dumps(errors,ensure_ascii=False)
+            +". Use --allow-incomplete-epochs ONLY for exploratory QC."
+        )
+    return errors
+
 
 def grid_to_city(static,links=None):
     if links is None:
@@ -117,6 +203,7 @@ def main():
     p.add_argument("--koppen-id-column",default="grid_id")
     p.add_argument("--koppen-code-column",default="koppen_code")
     p.add_argument("--out",type=Path)
+    p.add_argument("--allow-incomplete-epochs",action="store_true")
     a=p.parse_args()
     root=a.ghsl_root or a.base/"Groundsource_all"
     static_file=a.static_path or a.base/"mechanism_project"/"05_static_merged"/"grid_static_context_m3.parquet"
@@ -127,6 +214,12 @@ def main():
     if static.grid_id.isna().any() or static.grid_id.duplicated().any():
         raise RuntimeError("Static M3 grid_id null/duplicate")
     ghsl,byfile=read_ghsl(discover(root),set(static.grid_id))
+    epoch_errors=validate_epoch_coverage(ghsl,set(static.grid_id),a.allow_incomplete_epochs)
+    if not ghsl.built_fraction.notna().any():
+        print("[WARNING] No valid GHSL built_fraction source: leaving NaN; "
+              "urban_area_fraction is NOT built_fraction.")
+    else:
+        print("[QC] built_fraction valid grid-epochs:",int(ghsl.built_fraction.notna().sum()))
     links,mode=grid_to_city(static,a.city_overlap_csv)
     out=a.out or a.base/"mechanism_project"/"30_urban_context"
     out.mkdir(parents=True,exist_ok=True)
@@ -152,6 +245,9 @@ def main():
               "epochs":sorted(ghsl.epoch.unique().tolist()),
               "mapped_cities":int(city.city_id.nunique()),
               "city_weight_mode":mode,
+              "epoch_coverage_issues":epoch_errors,
+              "built_fraction_valid_grid_epochs":int(ghsl.built_fraction.notna().sum()),
+              "built_fraction_absent_means_not_measured":True,
               "note":"Population and built_fraction are context indicators. No inferred drainage, HAND, or city-population totals from 20km overlap."}
     (out/"30_manifest.json").write_text(json.dumps(overview,ensure_ascii=False,indent=2),encoding="utf-8")
     print("[DONE]",overview,out,flush=True)
