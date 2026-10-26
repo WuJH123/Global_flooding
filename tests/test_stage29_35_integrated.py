@@ -79,7 +79,7 @@ def test_31_no_fake_hand_and_coverage_flags():
     imp=np.array([[.5,.5],[.1,.1]])
     r=s.geom_stats(hand,np.array([[100,105],[110,140.]]),imp)
     assert r["hand_lt2_fraction"]==.5
-    assert r["impervious_mean_fraction"]==.3
+    assert abs(r["impervious_mean_fraction"]-.3)<1e-12
     assert 0<r["impervious_surface_weighted_hand_lt2_share"]<1
     bad=s.geom_stats(np.array([[np.nan,1],[np.nan,np.nan]]),None,None)
     assert np.isnan(bad["hand_p10_m"])
