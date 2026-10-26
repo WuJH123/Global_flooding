@@ -35,7 +35,7 @@ def connected_proxy(df,lag_days=1):
     x["episode_start"]=pd.to_datetime(x.episode_start,errors="raise")
     x=x.reset_index(drop=True)
     keys=list(zip(x.grid_x.astype(int),x.grid_y.astype(int),
-                  (x.episode_start.astype("int64")//(86400*10**9)).astype(int)))
+                  x.episode_start.to_numpy(dtype='datetime64[D]').astype('int64')))
     index={}
     for j,key in enumerate(keys):
         index.setdefault(key,[]).append(j)
