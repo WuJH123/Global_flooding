@@ -102,6 +102,8 @@ def main():
                    help="Citation/source of actual HAND computation; required with HAND.")
     p.add_argument("--dem-tif",type=Path)
     p.add_argument("--impervious-tif",type=Path)
+    p.add_argument("--impervious-kind",choices=("fraction","gaia_year_code"),default="fraction")
+    p.add_argument("--impervious-epoch",type=int,default=2018)
     p.add_argument("--rivers",type=Path)
     p.add_argument("--sample-pixels",type=int,default=80)
     p.add_argument("--min-valid",type=float,default=.70)
@@ -109,6 +111,8 @@ def main():
     a=p.parse_args()
     if not any([a.hand_tif,a.dem_tif,a.impervious_tif,a.rivers]):
         raise ValueError("Supply an actual raster or river-vector source")
+    if a.impervious_kind=="gaia_year_code" and (a.impervious_epoch<1985 or a.impervious_epoch>2018):
+        raise ValueError("GAIA annual observations are limited to 1985–2018; refuse future extrapolation")
     if a.hand_tif and not a.hand_provenance:
         raise ValueError("--hand-provenance required. MERIT Hydro hnd IS NOT HAND")
     if a.sample_pixels<10 or a.sample_pixels>400:
@@ -129,7 +133,13 @@ def main():
             if path is not None:
                 if not path.exists():raise FileNotFoundError(path)
                 vals[field]=raster_tile(path,int(r.grid_x),int(r.grid_y),
-                                        a.sample_pixels,kind)
+                                        a.sample_pixels,
+                                        "categorical" if field=="impervious" and a.impervious_kind=="gaia_year_code" else kind)
+                if field=="impervious" and a.impervious_kind=="gaia_year_code":
+                    source=vals[field]
+                    valid=np.isfinite(source)&(source>=0)&(source<=34)
+                    year=2019-source
+                    vals[field]=np.where(valid,((source>0)&(year<=a.impervious_epoch)).astype(float),np.nan)
             else:vals[field]=None
         g.update(geom_stats(vals["hand"],vals["dem"],vals["impervious"],a.min_valid))
         rows.append(g)
@@ -149,6 +159,8 @@ def main():
         "hand_provenance":a.hand_provenance,
         "dem_source":str(a.dem_tif) if a.dem_tif else None,
         "impervious_source":str(a.impervious_tif) if a.impervious_tif else None,
+        "impervious_kind":a.impervious_kind,
+        "impervious_epoch":a.impervious_epoch,
         "rivers":str(a.rivers) if a.rivers else None,
         "sample_resolution_m_approx":GRID/a.sample_pixels,
         "n_grids":len(tab),
