@@ -20,6 +20,7 @@ def write_raster(tmp_path,year=2020,short=False,invalid=False):
     data=np.zeros((size,size),dtype="float32")
     data[:200,:200]=2500
     if not short:
+        data[200:,:200]=2500
         data[:200,200:]=5000
         data[200:,200:]=10000
     if invalid:data[0,0]=12000.
