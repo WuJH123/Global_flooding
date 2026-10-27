@@ -16,6 +16,7 @@ import numpy as np
 
 EPOCH_PATTERN = re.compile(r"ghsl_(\d{4})_built_total_m2$")
 YEAR_PATTERN = re.compile(r"era5_(\d{4})_annual_precip_mm$")
+GAIA_PATTERN = re.compile(r"gaia_(\d{4})_impervious_class_area_m2$")
 AREA = 400000000.0
 
 def read_frame(path):
@@ -33,12 +34,12 @@ def audit_files(paths, kind):
     ids_by_year={}
     for path in paths:
         f=read_frame(path)
-        match=EPOCH_PATTERN if kind=="ghsl" else YEAR_PATTERN
+        match={"ghsl":EPOCH_PATTERN,"era5":YEAR_PATTERN,"gaia":GAIA_PATTERN}[kind]
         years=sorted(int(match.fullmatch(c).group(1)) for c in f.columns if match.fullmatch(c))
         if not years:
             raise RuntimeError(f"No {kind} per-year fields: {path}")
         for y in years:
-            prefix=f"ghsl_{y}_" if kind=="ghsl" else f"era5_{y}_"
+            prefix={"ghsl":f"ghsl_{y}_","era5":f"era5_{y}_","gaia":f"gaia_{y}_"}[kind]
             current=set(f.grid_id.astype(str))
             duplicate=current & ids_by_year.get(y,set())
             if duplicate: errors.append(f"Duplicate {y} grid IDs across files, e.g. {sorted(duplicate)[:3]}")
@@ -65,6 +66,12 @@ def audit_files(paths, kind):
                 rec={"year":y,"file":path.name,"rows":len(f),"missing_built":int(b.isna().sum()),
                      "missing_pop":int(x[prefix+"pop_total"].isna().sum()),
                      "missing_smod":int(land.isna().sum())}
+            elif kind=="gaia":
+                v=pd.to_numeric(f[prefix+"impervious_class_area_m2"],errors="coerce")
+                if ((v<0)|(v>AREA*1.2)).any():
+                    errors.append(f"GAIA {y}: impossible classified area")
+                rec={"year":y,"file":path.name,"rows":len(f),
+                     "missing_class_area":int(v.isna().sum())}
             else:
                 required=["annual_precip_mm","rx1day_mm","heavy20_days",
                           "wet1_days","sm1_mean","temp2m_mean_c",
@@ -88,18 +95,24 @@ def audit_files(paths, kind):
                      "missing_sm1":int(x[prefix+"sm1_mean"].isna().sum()),
                      "negative_precip_days_sum":float(x[prefix+"negative_precip_days"].sum())}
             records.append(rec)
+        if kind=="gaia" and len(years)>1:
+            for earlier,later in zip(years[:-1],years[1:]):
+                a=pd.to_numeric(f[f"gaia_{earlier}_impervious_class_area_m2"],errors="coerce")
+                b=pd.to_numeric(f[f"gaia_{later}_impervious_class_area_m2"],errors="coerce")
+                if (a>b+1).any():
+                    errors.append(f"GAIA {path.name}: classified impervious area decreases {earlier}->{later}")
     return records,errors,ids_by_year
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--kind",choices=["ghsl","era5"],required=True)
+    p.add_argument("--kind",choices=["ghsl","era5","gaia"],required=True)
     p.add_argument("--csv-root",type=Path,required=True)
     p.add_argument("--expected-ids",type=Path,help="grid_centers.csv with one row per expected grid")
     p.add_argument("--out",type=Path,default=Path("audits/stage46_47"))
     p.add_argument("--allow-test",action="store_true",help="Include _test CSVs ONLY for isolated smoke audit")
     p.add_argument("--require-full",action="store_true",help="Fail unless every output year has exact expected grid ID set")
     args=p.parse_args()
-    pattern="ghsl_epoch_v1_*.csv" if args.kind=="ghsl" else "era5yr_v1_*.csv"
+    pattern={"ghsl":"ghsl_epoch_v1_*.csv","era5":"era5yr_v1_*.csv","gaia":"gaia_imp_v1_*.csv"}[args.kind]
     files=sorted(args.csv_root.rglob(pattern))
     if not args.allow_test:files=[f for f in files if "_test" not in f.stem.lower()]
     if not files:raise FileNotFoundError(f"No CSVs matching {pattern} under {args.csv_root}")
