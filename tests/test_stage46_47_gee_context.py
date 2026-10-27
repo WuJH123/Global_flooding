@@ -77,3 +77,31 @@ def test_stage48_detects_overlap_and_bad_physics(tmp_path):
     a.to_csv(y,index=False)
     _,errs,_=m.audit_files([y],"ghsl")
     assert any("greater than total" in e for e in errs)
+
+
+def test_gaia_epoch_year_mapping_and_dry_run():
+    m=load("49_gee_gaia_impervious_history.py")
+    assert m.epochs("2018,2000,2010")==[2000,2010,2018]
+    assert 2019-2018==1 and 2019-2000==19
+    import pytest
+    with pytest.raises(ValueError):m.epochs("2020")
+    with pytest.raises(ValueError):m.chunks("4-2")
+    p=subprocess.run([sys.executable,str(R/"49_gee_gaia_impervious_history.py"),
+                      "--chunks","0","--epochs","2000,2018"],
+                     capture_output=True,text=True,check=True)
+    assert "DRY RUN" in p.stdout and "[STARTED]" not in p.stdout
+
+def test_stage48_gaia_monotone_area(tmp_path):
+    import pandas as pd
+    m=load("48_validate_new_context_csvs.py")
+    f=pd.DataFrame({"grid_id":["g1","g2"],
+                    "gaia_2000_impervious_class_area_m2":[100,0],
+                    "gaia_2018_impervious_class_area_m2":[150,200]})
+    p=tmp_path/"gaia_imp_v1_c0.csv"
+    f.to_csv(p,index=False)
+    _,err,_=m.audit_files([p],"gaia")
+    assert not err
+    f.loc[0,"gaia_2018_impervious_class_area_m2"]=10
+    f.to_csv(p,index=False)
+    _,err,_=m.audit_files([p],"gaia")
+    assert any("decreases" in e for e in err)
