@@ -31,7 +31,7 @@ pipelines/r34/46_gee_ghsl_epoch_context.py
 * GHSL observed historical epochs 2000/2005/2010/2015/2020.
 * Built-total m², non-residential built m², valid built pixel area m², population count/valid pixel area, SMOD urban/dense/valid land area m².
 * SMOD urban = classes 21,22,23,30; dense=23,30. SMOD urban area != built surface area.
-* 100m built/pop cell totals are spatially SUMMED, first to 1km, then to 20km. Do NOT average cell totals. Native raster pilot comparison is required before production.
+* 100m built/pop per-cell totals are converted to native units per m², overlap-weighted MEAN density to 1km, multiplied by target pixel m², then summed to 20km. Direct reduceResolution(sum) on native pixel totals is NOT mass-conserving. The previous V1 code had this defect: V2 must be used; do not merge any V1 export. Native 2020 raster pilot comparison is mandatory before production.
 * Default 6 original M3 chunks -> 6 EE tasks; oversized tasks can be subdivided, but never mix parent and child outputs blindly.
 
 pipelines/r34/47_gee_era5_annual_context.py
@@ -44,7 +44,7 @@ pipelines/r34/47_gee_era5_annual_context.py
 pipelines/r34/49_gee_gaia_impervious_history.py
 * Optional 1985-2018 GAIA index-year (1=2018, 19=2000); exported area is summed area of 30m pixels with >50% impervious classification, not full fractional impervious cover.
 * Restricts to 2000/2005/2010/2015/2018 epochs, never extrapolates GAIA to 2020.
-* Reduces 30m source to 500m before grid integration; cloud numerical smoke is mandatory.
+* 30m binary class is aggregated as overlap-weighted mean fraction × 500m pixel area before 20km summation. This is the V2 replacement for incorrect weighted-sum V1. Do not mix any V1 outputs. Cloud numerical smoke is mandatory.
 
 pipelines/r34/48_validate_new_context_csvs.py
 * Local check: duplicate grid-year/epoch IDs, missing fields, built area/NRES, SMOD area ordering, ERA5 physical/unit ranges and coverage IDs.
@@ -148,9 +148,9 @@ computational limits and task history. Fewer batch tasks do not guarantee lower 
 $GHSLC="$BASE\R34_GHSL_Epochs_all"
 $ERA5C="$BASE\R34_ERA5_Annual_all"
 $GAIAC="$BASE\R34_GAIA_all"
-& $PY "$R34\48_validate_new_context_csvs.py" --kind ghsl --csv-root "$GHSLC" --expected-ids "$GRID" --require-full
+& $PY "$R34\48_validate_new_context_csvs.py" --kind ghsl --csv-root "$GHSLC" --expected-ids "$GRID" --expected-years 2000,2005,2010,2015,2020 --require-full
 & $PY "$R34\48_validate_new_context_csvs.py" --kind era5 --csv-root "$ERA5C" --expected-ids "$GRID" --require-full
-& $PY "$R34\48_validate_new_context_csvs.py" --kind gaia --csv-root "$GAIAC" --expected-ids "$GRID" --require-full
+& $PY "$R34\48_validate_new_context_csvs.py" --kind gaia --csv-root "$GAIAC" --expected-ids "$GRID" --expected-years 2000,2005,2010,2015,2018 --require-full
 ~~~
 
 Use --require-full only when every task/year is downloaded. During pilot omit it.
@@ -166,3 +166,7 @@ Do not merge automatically into established manuscript inputs until QC passes.
 * All-city (not only M3 reported city) annual IMERG extreme-rain climate history.
 * CMIP6 climate model historical validation, bias correction and multi-model future scenarios.
 These need their own frozen data and QA before causal or risk-change claims.
+
+## October 2026 P0 numerical correction
+
+Previous Stage46/Stage49 V1 algorithms used `reduceResolution(ee.Reducer.sum())` on source per-pixel totals/areas, not respecting EE's target-pixel-overlap weighting. This could severely undercount area/population. V2 implements per-area density (for BU/POP) or class indicator fraction (for GAIA), overlap-weighted mean and multiplication by target pixel area. GEE tasks are versioned `GHSL_EPOCH_V2_*` and `GAIA_IMP_V2_*`. **Delete/quarantine any V1 exports; never merge V1 with V2.** Existing Stage47 ERA5 annual computation is unaffected. Dry-run pytest validates algebraic contracts only; the 30-grid GEE pilot and 2020 E2020 local raster comparison remain mandatory before full exports.
