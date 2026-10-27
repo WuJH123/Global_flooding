@@ -6,6 +6,8 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 R=ROOT/"pipelines"/"r34"
+if str(R) not in sys.path:
+    sys.path.insert(0, str(R))
 
 def load(stem):
     path=R/stem
@@ -117,7 +119,7 @@ def test_area_conservation_regression_ghsl():
     assert "native_density" in src
     assert "ee.Reducer.mean()" in src
     assert "multiply(target_area)" in src
-    assert m.VERSION=="GHSL_EPOCH_V2"
+    assert m.VERSION=="GHSL_EPOCH_V3"
     # 100 source 100m cells (each 5,000m2 built) in one 1km target.
     expected_total=100*5_000
     old_wrong_weighted_sum=100*5_000*0.01
@@ -133,13 +135,84 @@ def test_area_conservation_regression_gaia():
     assert "ee.Reducer.mean()" in src
     assert "km500=fraction.multiply(target_area)" in src
     assert "ee.Reducer.sum()" not in src
-    assert m.VERSION=="GAIA_IMP_V2"
+    assert m.VERSION=="GAIA_IMP_V3"
 
 
 def test_stage48_v2_glob_and_expected_years():
     import inspect
     m=load("48_validate_new_context_csvs.py")
     src=inspect.getsource(m.main)
-    assert '"ghsl_epoch_v2_*.csv"' in src
-    assert '"gaia_imp_v2_*.csv"' in src
+    assert '"ghsl_epoch_v3_*.csv"' in src
+    assert '"gaia_imp_v3_*.csv"' in src
     assert "--expected-years" in src
+
+
+
+def test_r34_wkt_crs_matches_previously_successful_merit():
+    """Regression for task failed 'The CRS of a map projection could not be parsed'."""
+    import inspect
+    p=load("ee_ease_projection.py")
+    assert 'Cylindrical_Equal_Area' in p.EASE_WKT
+    assert 'AUTHORITY["EPSG","6933"]' in p.EASE_WKT
+    assert "PROJCS[" in p.EASE_WKT
+    assert 'WGS 84 / NSIDC EASE-Grid 2.0 Global' in p.EASE_WKT
+    legacy=(ROOT/"mechanism_scripts"/"04_submit_merit_gee.py").read_text(encoding="utf-8")
+    assert "EASE_WKT" in legacy and 'PROJECTION["Cylindrical_Equal_Area"]' in legacy
+    for script in ["46_gee_ghsl_epoch_context.py",
+                   "47_gee_era5_annual_context.py",
+                   "49_gee_gaia_impervious_history.py"]:
+        m=load(script)
+        assert m.grid_projection.__module__ == 'ee_ease_projection'
+        assert "--probe-projection" in inspect.getsource(m.main)
+        assert "probe_projection(ee)" in inspect.getsource(m.main)
+        assert 'ee.Projection("EPSG:6933")' not in inspect.getsource(m.main)
+    assert load("47_gee_era5_annual_context.py").VERSION=="ERA5YR_V2"
+
+
+def test_server_crs_probe_mock_geometry_and_raster():
+    """Mock verifies successful and failed preflight behavior, live GEE remains necessary."""
+    import pytest
+    p=load("ee_ease_projection.py")
+    class V:
+        def __init__(self,x):self.x=x
+        def getInfo(self):return self.x
+    class N:
+        def __init__(self,x):self.x=float(x)
+        def multiply(self,y):return N(self.x*y)
+        def add(self,y):return N(self.x+y)
+    class P:
+        def __init__(self,wkt):self.wkt=wkt
+    class Rectangle:
+        def area(self,maxError):return V(400_000_000)
+    class Geometry:
+        @staticmethod
+        def Rectangle(coords,proj,geodesic,evenOdd):return Rectangle()
+    class AreaImage:
+        def rename(self,b):return self
+        def reduceRegion(self,**kwargs):return V({"pixel_area_m2":400_000_000})
+    class Image:
+        @staticmethod
+        def pixelArea():return AreaImage()
+    class Reducer:
+        @staticmethod
+        def sum():return "sum"
+    class FakeEE:pass
+    FakeEE.Projection=P
+    FakeEE.Geometry=Geometry
+    FakeEE.Number=N
+    FakeEE.List=lambda a:a
+    FakeEE.Image=Image
+    FakeEE.Reducer=Reducer
+
+    assert p.grid_projection(FakeEE).wkt == p.EASE_WKT
+    assert p.probe_projection(FakeEE).wkt == p.EASE_WKT
+
+    def invalid_raster_region(self, **kwargs):
+        return V({"pixel_area_m2":20})
+    old=AreaImage.reduceRegion
+    AreaImage.reduceRegion=invalid_raster_region
+    try:
+        with pytest.raises(RuntimeError,match="pixel-area"):
+            p.probe_projection(FakeEE)
+    finally:
+        AreaImage.reduceRegion=old

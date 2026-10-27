@@ -10,9 +10,11 @@ import argparse
 import re
 import time
 
+from ee_ease_projection import grid_projection, rectangular_grid, probe_projection
+
 PROJECT = "eco-sector-503721-b7"
 DEFAULT_ASSET = f"projects/{PROJECT}/assets/groundsource_merit_m3_grids"
-VERSION = "ERA5YR_V1"
+VERSION = "ERA5YR_V2"
 GRID_M = 20000
 METRICS = ("temp2m_mean_c", "annual_precip_mm", "rx1day_mm",
            "heavy20_days", "wet1_days", "sm1_mean", "valid_precip_days",
@@ -70,11 +72,8 @@ def name(years, c, sub, n, test):
 
 def grid_geom(f, ee, proj):
     f = ee.Feature(f)
-    x = ee.Number(f.get("grid_x")).multiply(GRID_M)
-    y = ee.Number(f.get("grid_y")).multiply(GRID_M)
     return ee.Feature(
-        ee.Geometry.Rectangle([x, y, x.add(GRID_M), y.add(GRID_M)],
-                              proj, False, True),
+        rectangular_grid(ee, f.get("grid_x"), f.get("grid_y"), proj),
         f.toDictionary(["grid_id", "grid_x", "grid_y", "chunk_id"]))
 
 def year_image(year, ee):
@@ -122,6 +121,7 @@ def main():
     p.add_argument("--tile-scale", type=int, default=8)
     p.add_argument("--test", action="store_true")
     p.add_argument("--verify-asset", action="store_true")
+    p.add_argument("--probe-projection", action="store_true", help="Check server CRS parser and pixel area, no batch task")
     p.add_argument("--submit", action="store_true")
     p.add_argument("--retry-failed", action="store_true")
     p.add_argument("--drive-folder", default="GlobalFlood_R34_ERA5_Annual")
@@ -136,7 +136,7 @@ def main():
     print("[PLAN]", len(tasks), "tasks, grid domain", args.asset, "annual years", ys)
     for c, s, b in tasks:
         print("[PLAN]", name(b,c,s,args.subdivisions,args.test))
-    if not args.submit and not args.verify_asset:
+    if not args.submit and not args.verify_asset and not args.probe_projection:
         print("[DRY RUN] No EE calls, no tasks. Inspect then --test --submit first.")
         return
 
@@ -147,10 +147,13 @@ def main():
         raise RuntimeError("Asset must be a TABLE of grid_id/grid_x/grid_y/chunk_id")
     if args.verify_asset:
         print("[ASSET]", args.asset, "rows", ee.FeatureCollection(args.asset).size().getInfo())
-        if not args.submit:
+        if not args.submit and not args.probe_projection:
             return
+    if args.probe_projection or args.submit:
+        proj = probe_projection(ee)
+    if not args.submit:
+        return
     raw = ee.FeatureCollection(args.asset)
-    proj = ee.Projection("EPSG:6933")
     remote = states(ee)
     created=0
     for c, sub, b in tasks:
