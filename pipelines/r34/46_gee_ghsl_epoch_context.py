@@ -17,7 +17,7 @@ GRID_M = 20000
 EPOCHS = (2000, 2005, 2010, 2015, 2020)
 SMOD_URBAN_CODES = (21, 22, 23, 30)
 SMOD_DENSE_CODES = (23, 30)
-VERSION = "GHSL_EPOCH_V1"
+VERSION = "GHSL_EPOCH_V2"
 
 def parse_chunks(spec: str) -> list[int]:
     result = set()
@@ -66,10 +66,30 @@ def reconstruct(f, proj, ee):
     return ee.Feature(geom, f.toDictionary(["grid_id", "grid_x", "grid_y", "chunk_id"]))
 
 def aggregate_to_km(image, ee, proj, source_scale=100, target_scale=1000):
-    """Area-weighted footprint sum on target cells, not bilinear interpolation of counts."""
-    # reduceResolution respects pixel overlap and should be QC-checked at 1km.
-    return (image.reduceResolution(reducer=ee.Reducer.sum(), maxPixels=256)
-            .reproject(crs=proj, scale=target_scale))
+    """Conserve native per-pixel TOTALS across a change in projection/resolution.
+
+    Earth Engine reduceResolution(sum) uses target-footprint overlap weights;
+    summing per-pixel totals there undercounts approximately by (source/target)^2.
+    Correct: native units/m2 -> overlap-weighted mean density -> target pixel area.
+    Fill source nodata as zero only for spatial mass integration, and export
+    independent valid-area bands to distinguish missing source coverage.
+    """
+    native_area = ee.Image.pixelArea().reproject(crs=image.projection())
+    native_density = image.divide(native_area).unmask(0)
+    target_density = (native_density
+        .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=256)
+        .reproject(crs=proj, scale=target_scale))
+    target_area = ee.Image.pixelArea().reproject(crs=proj, scale=target_scale)
+    return target_density.multiply(target_area)
+
+
+def smod_class_area_to_km(condition, ee, proj, target_scale=1000):
+    """Area share of each valid SMOD class, weighted on 1km reprojection."""
+    class_fraction = (condition.unmask(0)
+        .reduceResolution(reducer=ee.Reducer.mean(), maxPixels=64)
+        .reproject(crs=proj, scale=target_scale))
+    target_area = ee.Image.pixelArea().reproject(crs=proj, scale=target_scale)
+    return class_fraction.multiply(target_area)
 
 def epoch_image(year: int, ee, proj):
     built = ee.Image(f"JRC/GHSL/P2023A/GHS_BUILT_S/{year}")
@@ -81,7 +101,6 @@ def epoch_image(year: int, ee, proj):
     pc = pop.select("population_count")
     pix_b = ee.Image.pixelArea().reproject(crs=bu.projection())
     pix_p = ee.Image.pixelArea().reproject(crs=pc.projection())
-    pix_s = ee.Image.pixelArea().reproject(crs=smod.projection())
     bvalid = pix_b.updateMask(bu.mask())
     pvalid = pix_p.updateMask(pc.mask())
 
@@ -89,9 +108,9 @@ def epoch_image(year: int, ee, proj):
     land = smod.gte(11).And(smod.lte(30))
     urban = smod.eq(21).Or(smod.eq(22)).Or(smod.eq(23)).Or(smod.eq(30))
     dense = smod.eq(23).Or(smod.eq(30))
-    smod_land_m2 = pix_s.updateMask(land)
-    smod_urban_m2 = pix_s.updateMask(urban)
-    smod_dense_m2 = pix_s.updateMask(dense)
+    smod_land_m2 = smod_class_area_to_km(land, ee, proj)
+    smod_urban_m2 = smod_class_area_to_km(urban, ee, proj)
+    smod_dense_m2 = smod_class_area_to_km(dense, ee, proj)
     prefix = f"ghsl_{year}_"
     bands = ee.Image.cat([
         aggregate_to_km(bu, ee, proj).rename(prefix+"built_total_m2"),

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Audit Stage46/47 Drive CSVs after download, before any merge into main tables.
+r"""Audit Stage46/47 Drive CSVs after download, before any merge into main tables.
 
 Examples:
 python pipelines/r34/48_validate_new_context_csvs.py --kind ghsl --csv-root E:\...\GHSL_Epochs --expected-ids E:\...\grid_centers.csv
@@ -28,7 +28,6 @@ def read_frame(path):
     return f
 
 def audit_files(paths, kind):
-    seen=set()
     records=[]
     errors=[]
     ids_by_year={}
@@ -57,11 +56,14 @@ def audit_files(paths, kind):
                 urban=x[prefix+"smod_urban_area_m2"]
                 dense=x[prefix+"smod_dense_area_m2"]
                 land=x[prefix+"smod_land_area_m2"]
-                if ((b<0)|(b>AREA*1.1)|(n<0)|(n>b+1e-5)).any():
+                if ((b<0)|(b>AREA*1.1)|(n<0)|(n>b+1e-5)|
+                    (b>x[prefix+"built_valid_area_m2"]+1e-3)).any():
                     errors.append(f"GHSL {y}: built area impossible or NRES greater than total")
                 if ((urban<0)|(urban>land+1e-4)|(dense>urban+1e-4)|(land>AREA*1.2)).any():
                     errors.append(f"GHSL {y}: SMOD area ordering invalid")
-                if ((x[prefix+"pop_total"]<0)|(x[prefix+"built_valid_area_m2"]>AREA*1.2)).any():
+                if ((x[prefix+"pop_total"]<0)|
+                    (x[prefix+"built_valid_area_m2"]>AREA*1.2)|
+                    (x[prefix+"pop_valid_area_m2"]>AREA*1.2)).any():
                     errors.append(f"GHSL {y}: invalid population/valid area")
                 rec={"year":y,"file":path.name,"rows":len(f),"missing_built":int(b.isna().sum()),
                      "missing_pop":int(x[prefix+"pop_total"].isna().sum()),
@@ -111,12 +113,18 @@ def main():
     p.add_argument("--out",type=Path,default=Path("audits/stage46_47"))
     p.add_argument("--allow-test",action="store_true",help="Include _test CSVs ONLY for isolated smoke audit")
     p.add_argument("--require-full",action="store_true",help="Fail unless every output year has exact expected grid ID set")
+    p.add_argument("--expected-years",default=None,help="Comma-separated years/epochs: fail when any expected year is absent")
     args=p.parse_args()
-    pattern={"ghsl":"ghsl_epoch_v1_*.csv","era5":"era5yr_v1_*.csv","gaia":"gaia_imp_v1_*.csv"}[args.kind]
+    pattern={"ghsl":"ghsl_epoch_v2_*.csv","era5":"era5yr_v1_*.csv","gaia":"gaia_imp_v2_*.csv"}[args.kind]
     files=sorted(args.csv_root.rglob(pattern))
     if not args.allow_test:files=[f for f in files if "_test" not in f.stem.lower()]
     if not files:raise FileNotFoundError(f"No CSVs matching {pattern} under {args.csv_root}")
     rows,errors,ids_by_year=audit_files(files,args.kind)
+    if args.expected_years:
+        expected_years={int(x.strip()) for x in args.expected_years.split(",")}
+        actual_years=set(ids_by_year)
+        if expected_years != actual_years:
+            errors.append(f"Unexpected year coverage: missing={sorted(expected_years-actual_years)} extra={sorted(actual_years-expected_years)}")
     expected=None
     if args.expected_ids:
         expected=set(read_frame(args.expected_ids).grid_id.astype(str))

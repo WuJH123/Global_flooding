@@ -13,7 +13,7 @@ import re
 import time
 PROJECT="eco-sector-503721-b7"
 ASSET=f"projects/{PROJECT}/assets/groundsource_merit_m3_grids"
-VERSION="GAIA_IMP_V1"
+VERSION="GAIA_IMP_V2"
 GRID_M=20000
 EPOCHS=(2000,2005,2010,2015,2018)
 
@@ -52,16 +52,18 @@ def stack_for(years,ee,proj):
     gaia=ee.Image("Tsinghua/FROM-GLC/GAIA/v10").select("change_year_index")
     # 0/masked = NOT mapped impervious transition; no independent data coverage claim.
     gaia=gaia.unmask(0)
-    native_area=ee.Image.pixelArea().reproject(crs=gaia.projection())
     bands=[]
     for y in years:
         # Index 1=2018; 19=2000; 34=1985. Smaller index means more recent.
         yr_idx=2019-y
         imp=gaia.gte(yr_idx).And(gaia.lte(34))
-        footprint=native_area.multiply(imp)
-        km500=(footprint.reduceResolution(
-            reducer=ee.Reducer.sum(),maxPixels=512)
+        # Target-area-weighted classified share times target pixel area.
+        # A direct reduceResolution(sum) of native pixel area would undercount.
+        fraction=(imp.unmask(0).reduceResolution(
+            reducer=ee.Reducer.mean(),maxPixels=512)
             .reproject(crs=proj,scale=500))
+        target_area=ee.Image.pixelArea().reproject(crs=proj,scale=500)
+        km500=fraction.multiply(target_area)
         bands.append(km500.rename(f"gaia_{y}_impervious_class_area_m2"))
     return ee.Image.cat(bands)
 

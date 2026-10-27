@@ -105,3 +105,41 @@ def test_stage48_gaia_monotone_area(tmp_path):
     f.to_csv(p,index=False)
     _,err,_=m.audit_files([p],"gaia")
     assert any("decreases" in e for e in err)
+
+
+
+def test_area_conservation_regression_ghsl():
+    """Regression: EE source totals must not be directly reduceResolution(sum)'d."""
+    import inspect
+    m=load("46_gee_ghsl_epoch_context.py")
+    src=inspect.getsource(m.aggregate_to_km)
+    assert "VERSION" not in src
+    assert "native_density" in src
+    assert "ee.Reducer.mean()" in src
+    assert "multiply(target_area)" in src
+    assert m.VERSION=="GHSL_EPOCH_V2"
+    # 100 source 100m cells (each 5,000m2 built) in one 1km target.
+    expected_total=100*5_000
+    old_wrong_weighted_sum=100*5_000*0.01
+    new_area_density_mean=(5_000/10_000)*1_000_000
+    assert new_area_density_mean == expected_total
+    assert old_wrong_weighted_sum != expected_total
+
+
+def test_area_conservation_regression_gaia():
+    import inspect
+    m=load("49_gee_gaia_impervious_history.py")
+    src=inspect.getsource(m.stack_for)
+    assert "ee.Reducer.mean()" in src
+    assert "km500=fraction.multiply(target_area)" in src
+    assert "ee.Reducer.sum()" not in src
+    assert m.VERSION=="GAIA_IMP_V2"
+
+
+def test_stage48_v2_glob_and_expected_years():
+    import inspect
+    m=load("48_validate_new_context_csvs.py")
+    src=inspect.getsource(m.main)
+    assert '"ghsl_epoch_v2_*.csv"' in src
+    assert '"gaia_imp_v2_*.csv"' in src
+    assert "--expected-years" in src
