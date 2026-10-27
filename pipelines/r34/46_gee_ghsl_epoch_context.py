@@ -11,13 +11,15 @@ import argparse
 import re
 import time
 
+from ee_ease_projection import grid_projection, rectangular_grid, probe_projection
+
 PROJECT = "eco-sector-503721-b7"
 DEFAULT_ASSET = f"projects/{PROJECT}/assets/groundsource_merit_m3_grids"
 GRID_M = 20000
 EPOCHS = (2000, 2005, 2010, 2015, 2020)
 SMOD_URBAN_CODES = (21, 22, 23, 30)
 SMOD_DENSE_CODES = (23, 30)
-VERSION = "GHSL_EPOCH_V2"
+VERSION = "GHSL_EPOCH_V3"
 
 def parse_chunks(spec: str) -> list[int]:
     result = set()
@@ -59,10 +61,7 @@ def expected_fields(years: list[int]) -> list[str]:
 
 def reconstruct(f, proj, ee):
     f = ee.Feature(f)
-    x = ee.Number(f.get("grid_x")).multiply(GRID_M)
-    y = ee.Number(f.get("grid_y")).multiply(GRID_M)
-    geom = ee.Geometry.Rectangle([x, y, x.add(GRID_M), y.add(GRID_M)],
-                                 proj, False, True)
+    geom = rectangular_grid(ee, f.get("grid_x"), f.get("grid_y"), proj)
     return ee.Feature(geom, f.toDictionary(["grid_id", "grid_x", "grid_y", "chunk_id"]))
 
 def aggregate_to_km(image, ee, proj, source_scale=100, target_scale=1000):
@@ -153,6 +152,7 @@ def main():
     p.add_argument("--max-tasks", type=int, default=1, help="0 = all planned tasks")
     p.add_argument("--test", action="store_true", help="Limit to 30 grid cells in each selected task")
     p.add_argument("--verify-asset", action="store_true")
+    p.add_argument("--probe-projection", action="store_true", help="Server-check WKT/20km geometry and raster, no batch task")
     p.add_argument("--submit", action="store_true")
     p.add_argument("--retry-failed", action="store_true")
     p.add_argument("--drive-folder", default="GlobalFlood_R34_GHSL_Epochs")
@@ -167,17 +167,18 @@ def main():
           "subdivisions", args.subdivisions, "TEST", args.test)
     for c, sub in work:
         print("[PLAN]", names(years, c, sub, args.subdivisions, args.test)[0])
-    if not args.submit and not args.verify_asset:
+    if not args.submit and not args.verify_asset and not args.probe_projection:
         print("[DRY RUN] No EE call or task submitted. --test --submit on one chunk first.")
         return
 
     import ee
     ee.Initialize(project=args.project)
     check_asset(ee, args.asset, check_count=args.verify_asset)
+    if args.probe_projection or args.submit:
+        proj = probe_projection(ee)
     if not args.submit:
         return
     raw = ee.FeatureCollection(args.asset)
-    proj = ee.Projection("EPSG:6933")
     stack = ee.Image.cat([epoch_image(y, ee, proj) for y in years])
     fields = expected_fields(years)
     statuses = task_states(ee)
