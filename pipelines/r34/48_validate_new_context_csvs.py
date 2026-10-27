@@ -115,7 +115,7 @@ def main():
     p.add_argument("--require-full",action="store_true",help="Fail unless every output year has exact expected grid ID set")
     p.add_argument("--expected-years",default=None,help="Comma-separated years/epochs: fail when any expected year is absent")
     args=p.parse_args()
-    pattern={"ghsl":"ghsl_epoch_v2_*.csv","era5":"era5yr_v1_*.csv","gaia":"gaia_imp_v2_*.csv"}[args.kind]
+    pattern={"ghsl":"ghsl_epoch_v3_*.csv","era5":"era5yr_v2_*.csv","gaia":"gaia_imp_v3_*.csv"}[args.kind]
     files=sorted(args.csv_root.rglob(pattern))
     if not args.allow_test:files=[f for f in files if "_test" not in f.stem.lower()]
     if not files:raise FileNotFoundError(f"No CSVs matching {pattern} under {args.csv_root}")
