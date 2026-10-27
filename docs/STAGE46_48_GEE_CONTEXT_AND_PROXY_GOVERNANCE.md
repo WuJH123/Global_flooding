@@ -41,6 +41,11 @@ pipelines/r34/47_gee_era5_annual_context.py
 * Default 2018-2025 split by 2 years and 6 M3 chunks -> 24 EE tasks.
 * A trial over 1 chunk and small years must succeed before bulk production.
 
+pipelines/r34/49_gee_gaia_impervious_history.py
+* Optional 1985-2018 GAIA index-year (1=2018, 19=2000); exported area is summed area of 30m pixels with >50% impervious classification, not full fractional impervious cover.
+* Restricts to 2000/2005/2010/2015/2018 epochs, never extrapolates GAIA to 2020.
+* Reduces 30m source to 500m before grid integration; cloud numerical smoke is mandatory.
+
 pipelines/r34/48_validate_new_context_csvs.py
 * Local check: duplicate grid-year/epoch IDs, missing fields, built area/NRES, SMOD area ordering, ERA5 physical/unit ranges and coverage IDs.
 * It does not establish hydraulic or geographical validity, and does not silently impute missing coastal ERA5 values.
@@ -57,6 +62,7 @@ Roads OSM per-country PBF: https://download.geofabrik.de/
 GRIP4 regional roads CC0: https://www.globio.info/download-grip-dataset
 GloFAS historic (EWDS account): https://ewds.climate.copernicus.eu/datasets/cems-glofas-historical
 USGS GFID event tables: https://catalog.data.gov/dataset/the-global-flood-impacts-database-gfid-a-globally-aggregated-and-geocoded-flood-disaster-i
+GAIA impervious history: https://developers.google.com/earth-engine/datasets/catalog/Tsinghua_FROM-GLC_GAIA_v10
 GFD GEE validation: https://developers.google.com/earth-engine/datasets/catalog/GLOBAL_FLOOD_DB_MODIS_EVENTS_V1
 NEX-GDDP-CMIP6 future: https://developers.google.com/earth-engine/datasets/catalog/NASA_GDDP-CMIP6
 
@@ -126,13 +132,25 @@ A dry-run/single task is safer when the EE project is in restricted quota mode.
 When ready for larger sequential scheduling, set --max-tasks 0 after confirming
 computational limits and task history. Fewer batch tasks do not guarantee lower compute.
 
+## 49 Historical GAIA impervious classification (OPTIONAL; GEE)
+
+~~~powershell
+& $PY "$R34\49_gee_gaia_impervious_history.py" --epochs 2000,2005,2010,2015,2018 --chunks 0-5
+& $PY "$R34\49_gee_gaia_impervious_history.py" --verify-asset
+& $PY "$R34\49_gee_gaia_impervious_history.py" --chunks 0 --test --submit --max-tasks 1
+# Inspect pilot BEFORE a production task:
+# & $PY "$R34\49_gee_gaia_impervious_history.py" --chunks 0 --submit --max-tasks 1
+~~~
+
 ## 48 Local CSV QA
 
 ~~~powershell
 $GHSLC="$BASE\R34_GHSL_Epochs_all"
 $ERA5C="$BASE\R34_ERA5_Annual_all"
+$GAIAC="$BASE\R34_GAIA_all"
 & $PY "$R34\48_validate_new_context_csvs.py" --kind ghsl --csv-root "$GHSLC" --expected-ids "$GRID" --require-full
 & $PY "$R34\48_validate_new_context_csvs.py" --kind era5 --csv-root "$ERA5C" --expected-ids "$GRID" --require-full
+& $PY "$R34\48_validate_new_context_csvs.py" --kind gaia --csv-root "$GAIAC" --expected-ids "$GRID" --require-full
 ~~~
 
 Use --require-full only when every task/year is downloaded. During pilot omit it.
