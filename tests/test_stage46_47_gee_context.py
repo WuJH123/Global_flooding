@@ -49,3 +49,31 @@ def test_both_scripts_dry_run_without_ee_or_credentials():
         assert "[PLAN]" in p.stdout
         assert "[STARTED]" not in p.stdout
         assert "ee" not in sys.modules
+
+
+def test_stage48_detects_overlap_and_bad_physics(tmp_path):
+    import pandas as pd
+    m=load("48_validate_new_context_csvs.py")
+    a=pd.DataFrame({
+        "grid_id":["g0","g1"],
+        "ghsl_2020_built_total_m2":[100,100],
+        "ghsl_2020_built_nres_m2":[25,20],
+        "ghsl_2020_built_valid_area_m2":[400e6,400e6],
+        "ghsl_2020_pop_total":[1000,2000],
+        "ghsl_2020_pop_valid_area_m2":[400e6,400e6],
+        "ghsl_2020_smod_urban_area_m2":[100e6,200e6],
+        "ghsl_2020_smod_dense_area_m2":[20e6,40e6],
+        "ghsl_2020_smod_land_area_m2":[400e6,400e6],
+    })
+    x=tmp_path/"ghsl_epoch_v1_2020_c00.csv"
+    y=tmp_path/"ghsl_epoch_v1_2020_c01.csv"
+    a.to_csv(x,index=False)
+    rows,errs,ids=m.audit_files([x],"ghsl")
+    assert not errs and ids[2020]=={"g0","g1"}
+    a.iloc[:1].to_csv(y,index=False)
+    _,errs,_=m.audit_files([x,y],"ghsl")
+    assert any("Duplicate" in e for e in errs)
+    a.loc[0,"ghsl_2020_built_nres_m2"]=125
+    a.to_csv(y,index=False)
+    _,errs,_=m.audit_files([y],"ghsl")
+    assert any("greater than total" in e for e in errs)
