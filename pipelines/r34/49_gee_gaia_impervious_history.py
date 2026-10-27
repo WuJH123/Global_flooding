@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import re
 import time
+
+from ee_ease_projection import grid_projection, rectangular_grid, probe_projection
 PROJECT="eco-sector-503721-b7"
 ASSET=f"projects/{PROJECT}/assets/groundsource_merit_m3_grids"
-VERSION="GAIA_IMP_V2"
+VERSION="GAIA_IMP_V3"
 GRID_M=20000
 EPOCHS=(2000,2005,2010,2015,2018)
 
@@ -42,10 +44,8 @@ def taskname(epochs_,chunk,part,n,test):
 
 def feature_polygon(f,ee,proj):
     f=ee.Feature(f)
-    x=ee.Number(f.get("grid_x")).multiply(GRID_M)
-    y=ee.Number(f.get("grid_y")).multiply(GRID_M)
     return ee.Feature(
-        ee.Geometry.Rectangle([x,y,x.add(GRID_M),y.add(GRID_M)],proj,False,True),
+        rectangular_grid(ee, f.get("grid_x"), f.get("grid_y"), proj),
         f.toDictionary(["grid_id","grid_x","grid_y","chunk_id"]))
 
 def stack_for(years,ee,proj):
@@ -85,6 +85,7 @@ def main():
     a.add_argument("--tile-scale",type=int,default=8)
     a.add_argument("--max-tasks",type=int,default=1)
     a.add_argument("--verify-asset",action="store_true")
+    a.add_argument("--probe-projection",action="store_true",help="Check EASE WKT/raster without a batch task")
     a.add_argument("--submit",action="store_true")
     a.add_argument("--test",action="store_true")
     a.add_argument("--retry-failed",action="store_true")
@@ -97,7 +98,7 @@ def main():
     plan=[(c,s) for c in cc for s in range(args.subdivisions)]
     print("[PLAN]",len(plan),"tasks, GAIA years",yy,"grid asset",args.asset)
     for c,s in plan:print("[PLAN]",taskname(yy,c,s,args.subdivisions,args.test))
-    if not args.submit and not args.verify_asset:
+    if not args.submit and not args.verify_asset and not args.probe_projection:
         print("[DRY RUN] No EE calls or tasks")
         return
     import ee
@@ -107,9 +108,11 @@ def main():
         raise RuntimeError("Expected an EE TABLE asset with grid_id/grid_x/grid_y/chunk_id")
     if args.verify_asset:
         print("[ASSET ROWS]",ee.FeatureCollection(args.asset).size().getInfo())
-        if not args.submit:return
+        if not args.submit and not args.probe_projection:return
+    if args.probe_projection or args.submit:
+        proj=probe_projection(ee)
+    if not args.submit:return
     data=ee.FeatureCollection(args.asset)
-    proj=ee.Projection("EPSG:6933")
     raster=stack_for(yy,ee,proj)
     cols=["grid_id","grid_x","grid_y","chunk_id"]+[f"gaia_{y}_impervious_class_area_m2" for y in yy]
     states=remote(ee)
