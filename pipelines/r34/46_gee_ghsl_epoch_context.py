@@ -59,8 +59,8 @@ def expected_fields(years: list[int]) -> list[str]:
 
 def reconstruct(f, proj, ee):
     f = ee.Feature(f)
-    x = ee.Number.parse(ee.String(f.get("grid_x"))).multiply(GRID_M)
-    y = ee.Number.parse(ee.String(f.get("grid_y"))).multiply(GRID_M)
+    x = ee.Number(f.get("grid_x")).multiply(GRID_M)
+    y = ee.Number(f.get("grid_y")).multiply(GRID_M)
     geom = ee.Geometry.Rectangle([x, y, x.add(GRID_M), y.add(GRID_M)],
                                  proj, False, True)
     return ee.Feature(geom, f.toDictionary(["grid_id", "grid_x", "grid_y", "chunk_id"]))
@@ -79,17 +79,19 @@ def epoch_image(year: int, ee, proj):
     bu = built.select("built_surface")
     nr = built.select("built_surface_nres")
     pc = pop.select("population_count")
-    pix = ee.Image.pixelArea()
-    bvalid = pix.updateMask(bu.mask())
-    pvalid = pix.updateMask(pc.mask())
+    pix_b = ee.Image.pixelArea().reproject(crs=bu.projection())
+    pix_p = ee.Image.pixelArea().reproject(crs=pc.projection())
+    pix_s = ee.Image.pixelArea().reproject(crs=smod.projection())
+    bvalid = pix_b.updateMask(bu.mask())
+    pvalid = pix_p.updateMask(pc.mask())
 
     # 1km SMOD classes: exclude water(10) and nodata(-200) from valid land denominator.
     land = smod.gte(11).And(smod.lte(30))
     urban = smod.eq(21).Or(smod.eq(22)).Or(smod.eq(23)).Or(smod.eq(30))
     dense = smod.eq(23).Or(smod.eq(30))
-    smod_land_m2 = pix.updateMask(land)
-    smod_urban_m2 = pix.updateMask(urban)
-    smod_dense_m2 = pix.updateMask(dense)
+    smod_land_m2 = pix_s.updateMask(land)
+    smod_urban_m2 = pix_s.updateMask(urban)
+    smod_dense_m2 = pix_s.updateMask(dense)
     prefix = f"ghsl_{year}_"
     bands = ee.Image.cat([
         aggregate_to_km(bu, ee, proj).rename(prefix+"built_total_m2"),
