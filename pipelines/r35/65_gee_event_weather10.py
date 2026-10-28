@@ -20,17 +20,18 @@ def daily_image(ee,day):
     nextday=day.advance(1,"day")
     imerg=(ee.ImageCollection("NASA/GPM_L3/IMERG_V07")
            .filterDate(day,nextday).select("precipitation"))
-    p24=imerg.sum().multiply(.5).rename("imerg_p24_utc_mm")
     count=imerg.count().rename("imerg_halfhour_count")
+    p24=imerg.sum().multiply(.5).updateMask(count.eq(48)).rename("imerg_p24_utc_mm")
     # Rolling 3h: 43 starts from 00:00 through 21:00; six 30-minute steps.
     def window(k):
         start=day.advance(ee.Number(k).multiply(30),"minute")
-        return imerg.filterDate(start,start.advance(180,"minute")).sum().multiply(.5).rename("p3h")
+        sub=imerg.filterDate(start,start.advance(180,"minute"))
+        return sub.sum().multiply(.5).updateMask(sub.count().eq(6)).rename("p3h")
     p3h=ee.ImageCollection.fromImages(ee.List.sequence(0,42).map(window)).max().rename("imerg_p3h_rolling_mm")
     era=ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR")
     era7=era.filterDate(day.advance(-7,"day"),day).select("total_precipitation_sum")
-    a7=era7.sum().multiply(1000).max(0).rename("era5_api7_mm")
     a7n=era7.count().rename("era5_api7_valid_days")
+    a7=era7.sum().multiply(1000).max(0).updateMask(a7n.eq(7)).rename("era5_api7_mm")
     previous=ee.Image(era.filterDate(day.advance(-1,"day"),day).first())
     soil=previous.select("volumetric_soil_water_layer_1").rename("era5_sm1_prevday")
     temp=ee.Image(era.filterDate(day,nextday).first()).select("temperature_2m").subtract(273.15).rename("era5_temp_day_c")
@@ -59,6 +60,9 @@ def main():
     if not a.submit:print("[DRY RUN] No GEE Task");return
     import ee
     ee.Initialize(project=a.project)
+    info=ee.data.getAsset(a.asset)
+    if info.get("type")!="TABLE":
+        raise RuntimeError("Request asset must be a TABLE, received "+str(info.get("type")))
     recent={str(t.get("description")):t.get("state") for t in ee.data.getTaskList()}
     if name in recent:raise RuntimeError(f"Existing EE Task {name} {recent[name]}: do not duplicate")
     table=ee.FeatureCollection(a.asset)
