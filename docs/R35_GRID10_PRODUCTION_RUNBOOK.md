@@ -261,6 +261,34 @@ Complete reporting-selection assessment still needs country/year
 internet/press intensity, GFID archive overlap, independent location
 quality and historical urban/nonurban sample definitions.
 
+
+## 6c. CMIP6 multi-model anomaly ensemble on locked 10km cells
+
+Do not compare absolute SSP rain intensity with ERA5 directly. Pair each
+climate model with ITS OWN historical baseline 1995-2014 and use
+within-model future-minus-baseline anomalies. Stage71 outputs median and
+5th/95th cross-model spread (NOT an inferential 95% CI). Require >=3
+independent GCMs for minimal sensitivity, preferably 6+ for publication.
+Each model/scenario/period needs a west AND east GeoTIFF converted with
+Stage64b `--source cmip6`. Example for one model:
+
+```powershell
+& $PY "$R35\64b_grid10_static_dynamic_join.py" --source cmip6 --label ACCESS-CM2_historical_1995_2014 --grid "$GRID" --west "$TIFS\cmip10_v1_access-cm2_historical_1995_2014_s00.tif" --east "$TIFS\cmip10_v1_access-cm2_historical_1995_2014_s01.tif" --out "$BASE\grid10\cmip"
+& $PY "$R35\64b_grid10_static_dynamic_join.py" --source cmip6 --label ACCESS-CM2_ssp245_2041_2060 --grid "$GRID" --west "$TIFS\cmip10_v1_access-cm2_ssp245_2041_2060_s00.tif" --east "$TIFS\cmip10_v1_access-cm2_ssp245_2041_2060_s01.tif" --out "$BASE\grid10\cmip"
+```
+
+Repeat for additional actual collection-supported models, both SSP245
+and SSP585, mid-century and late-century windows with their own baseline,
+then run:
+```powershell
+& $PY "$R35\71_cmip6_ensemble10.py" --cmip-root "$BASE\grid10\cmip" --population-2020 "$BASE\grid10\context\64b_ghsl_E2020_grid10.parquet" --out "$BASE\grid10\results34\cmip" --min-models 3
+```
+
+This identifies multi-model shifts of dangerous DAILY weather conditions
+and fixed-2020 human exposure. It cannot project 3h IMERG triggers,
+stormwater flood occurrence or future SSP population changes without
+extra downscaling/impact and population datasets.
+
 ## 7. Results map and hard gates
 
 3.1: 62,62b,62c,63,63b,70 (+ reporting bias covariates)
