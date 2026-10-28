@@ -26,7 +26,10 @@ ALLOWED={
     "basin_slope_degrees":"slope",
     "nearest_mapped_river_km":"river_distance",
     "hand_lt2_fraction":"low_hand",
-    "impervious_mean_fraction":"impervious"
+    "impervious_mean_fraction":"impervious",
+    "ghsl_built_5km_sd_wmean":"within20km_built_heterogeneity",
+    "ghsl_built_5km_max_wmean":"within20km_built_max",
+    "ghsl_built_5km_high_area_wmean":"within20km_high_built_share"
 }
 PRESETS=("ghsl_built_fraction_wmean","merit_local_relief_m_approx",
          "cru_pre_annual_mm","ghsl_urban_area_fraction_wmean")

@@ -123,3 +123,33 @@ This update fully implements only the local BUILT-S 2020 5km cache and
 its 10km/20km additive aggregation, not all high-resolution environment
 datasets (GAIA/HAND/POP still need extraction), not a complete global
 2020 all-urban universe, and not 5km rainfall or location observations.
+
+
+## E. Bridge into the existing 34b interaction-response model (NO GEE)
+
+After full Stage55 QC, retain original 20km onset risk sets and create a
+NEW city-environment table. Stage56 weights the 20km parent-level **within
+5km built heterogeneity** using the UCDB city-grid overlap, explicitly
+noting that true within-city fine-cell intersections are not calculated.
+
+~~~powershell
+$R33="$BASE\pipelines\r33"
+$CITY="$BASE\mechanism_project\30_urban_context\30b_city_features_2020.parquet"
+$LINKS="$BASE\mechanism_project\01_cities\m3\grid_city_crosswalk_all.csv"
+$BRIDGE="$BASE\mechanism_project\56_built5_city_bridge"
+$CITYTYPES="$BASE\stage33_city_typology\33_city_environment_types.csv"
+
+& $PY "$R34\56_bridge_fine5_city_response.py" --grid-20km "$BASE\mechanism_project\55_multiscale_environment\environment_grid_20km_2020.parquet" --city-crosswalk "$LINKS" --city-table "$CITY" --out-dir "$BRIDGE"
+
+& $PY "$R33\34b_continuous_environment_response.py" --base "$BASE" --city-types "$CITYTYPES" --city-environment "$BRIDGE\56_city_environment_with_built5.parquet" --features ghsl_built_5km_sd_wmean --validation spatial --bootstrap-reps 99 --max-strata 5000 --out "$BASE\stage33_continuous_response\multiscale_smoke"
+
+# Once smoke passes and the Stage55 numeric parity review is acceptable:
+& $PY "$R33\34b_continuous_environment_response.py" --base "$BASE" --city-types "$CITYTYPES" --city-environment "$BRIDGE\56_city_environment_with_built5.parquet" --features ghsl_built_5km_sd_wmean --validation all --bootstrap-reps 399 --out "$BASE\stage33_continuous_response\multiscale_full"
+~~~
+
+For a fair ablation, fit baseline and modifier models on the exact same
+complete-case strata, identical train/test folds and city membership.
+The 2020 environment does not enter the pre-2020 model by default.
+This tests whether internal built variability modifies *observed reported
+event associations*; it does not identify true drainage network capacity,
+street-scale flooding, or causal effects.
