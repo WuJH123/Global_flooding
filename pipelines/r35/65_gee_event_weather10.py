@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse,json
 from pathlib import Path
 from datetime import date,timedelta
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent/"r34"))
 from ee_ease_projection import EASE_WKT
 
 T=[10000,0,-17360000,0,-10000,7320000]

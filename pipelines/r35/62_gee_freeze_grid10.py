@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse,hashlib,json,math
 from pathlib import Path
 from pyproj import Transformer
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent/"r34"))
 from ee_ease_projection import EASE_WKT
 
 PROJECT="eco-sector-503721-b7"

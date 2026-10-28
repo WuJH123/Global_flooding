@@ -11,6 +11,8 @@ Future CMIP6 daily rates kg m-2 s-1 * 86400 => mm/day.
 from __future__ import annotations
 import argparse,json,hashlib
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent/"r34"))
 from ee_ease_projection import EASE_WKT
 from pathlib import Path
 
