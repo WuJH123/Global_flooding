@@ -246,9 +246,24 @@ project future 3h flood probability from daily CMIP6. 3.4 future
 multimodel uncertainty and 3.5 attributable human exposure need
 separate bias-adjusted model ensemble and SSP population.
 
+## 6b. Results 3.1 observational archive footprint
+
+After Stage63, plus the E2020 POP files, reuse the frozen 10km
+urban universe and compute archive reported/unreported coverage:
+
+```powershell
+$KOPPEN="$BASE\koppen_geiger_tif\1991_2020\koppen_geiger_0p1.tif"
+& $PY "$R35\70_observation_framework10.py" --grid "$GRID" --links-root "$BASE\grid10\events" --population-2020 "$BASE\grid10\context\64b_ghsl_E2020_grid10.parquet" --koppen "$KOPPEN" --out "$BASE\grid10\results31"
+```
+
+This is urban **news-reporting coverage**, not flood occurrence risk.
+Complete reporting-selection assessment still needs country/year
+internet/press intensity, GFID archive overlap, independent location
+quality and historical urban/nonurban sample definitions.
+
 ## 7. Results map and hard gates
 
-3.1: 62,62b,62c,63,63b (+ reporting bias covariates)
+3.1: 62,62b,62c,63,63b,70 (+ reporting bias covariates)
 3.2: 65a,65,65b,66 (+ onset time/local rain lag and storm groups)
 3.3: 64 ghsl, 69, 68 (+ validated city transfer, historical urbanization)
 3.4: 64 era5/imerg/cmip6,64b,67 (+ multimodel baseline/SSP ensemble)

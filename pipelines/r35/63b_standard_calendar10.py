@@ -20,7 +20,7 @@ def build(links_root:Path,out:Path,analysis_end="2025-12-31"):
     con.execute("PRAGMA threads=4")
     con.execute(f"""CREATE TEMP VIEW links AS
       SELECT grid_id,event_id,TRY_CAST(start_date AS DATE) date0,
-             TRY_CAST(end_date AS DATE) date1,primary,is_high_geocode_specificity
+             TRY_CAST(end_date AS DATE) date1,"primary" AS is_primary,is_high_geocode_specificity
       FROM read_parquet('{files.replace(chr(39),chr(39)*2)}')
       WHERE grid_id IS NOT NULL""")
     e=analysis_end
@@ -39,7 +39,7 @@ def build(links_root:Path,out:Path,analysis_end="2025-12-31"):
        WHERE d<=DATE '{e}'""")
     con.execute(f"""CREATE TEMP TABLE onsets AS
        SELECT DISTINCT grid_id,date0 event_date
-       FROM links WHERE primary AND is_high_geocode_specificity
+       FROM links WHERE is_primary AND is_high_geocode_specificity
          AND date0 IS NOT NULL AND date0 BETWEEN DATE '2000-01-01' AND DATE '{e}'""")
     # date calendar per (grid_id,onset date), all same-month same-weekday
     con.execute("""CREATE TEMP TABLE calendar AS
