@@ -9,7 +9,7 @@ IMERG half-hour precipitation rates mm/h * 0.5 h; ERA5 daily mm m*1000.
 Future CMIP6 daily rates kg m-2 s-1 * 86400 => mm/day.
 """
 from __future__ import annotations
-import argparse,json,hashlib
+import argparse,json,hashlib,math
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent.parent/"r34"))
@@ -147,6 +147,12 @@ def run(a):
              "cmip6":lambda:cmip6(ee,details["model"],details["scenario"],details["start"],details["end"])}
         x0,x1=STRIPES[s]
         region=ee.Geometry.Rectangle([x0,YMIN,x1,YMAX],proj,False)
+        # Synchronous export-geometry validation (NO queued TEST task).
+        # Catch invalid projected bounds before EE batch queue spends a day.
+        area=float(region.area(maxError=10000).getInfo())
+        expected=float((x1-x0)*(YMAX-YMIN))
+        if not math.isfinite(area) or abs(area-expected)/expected>.03:
+            raise RuntimeError(f"EE geometry area mismatch: {area} vs {expected}")
         task=ee.batch.Export.image.toDrive(image=img[a.source](),
             description=name,folder=a.folder,fileNamePrefix=name.lower(),
             region=region,crs=EASE_WKT,crsTransform=T,

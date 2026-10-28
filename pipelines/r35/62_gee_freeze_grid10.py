@@ -76,6 +76,12 @@ def submit(a):
         if name in recent:
             raise RuntimeError(f"Task {name} already exists ({recent[name].get('state')}); verify result before resubmission")
         region=ee.Geometry.Rectangle([x0,YMIN,x1,YMAX],proj,False)
+        # Synchronous export-geometry validation (NO queued TEST task).
+        # Catch invalid projected bounds before EE batch queue spends a day.
+        area=float(region.area(maxError=10000).getInfo())
+        expected=float((x1-x0)*(YMAX-YMIN))
+        if not math.isfinite(area) or abs(area-expected)/expected>.03:
+            raise RuntimeError(f"EE geometry area mismatch: {area} vs {expected}")
         task=ee.batch.Export.image.toDrive(
             image=smod_image(ee),description=name,folder=a.folder,
             fileNamePrefix=name.lower(),region=region,crs=EASE_WKT,
