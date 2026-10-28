@@ -80,9 +80,9 @@ def build(links_root:Path,out:Path,analysis_end="2025-12-31"):
           HAVING SUM(is_onset)>=1 AND COUNT(*)>=2)""")
     dest=out/"63b_calendar_grid10.parquet"
     con.execute(f"COPY final TO '{str(dest).replace(chr(39),chr(39)*2)}' (FORMAT PARQUET,COMPRESSION ZSTD)")
-    stats=con.execute("""SELECT COUNT(*) days,COUNT(DISTINCT stratum_id) strata,
-        SUM(is_onset) onsets, COUNT(DISTINCT grid_id) grids,
-        MIN(event_date) min_day, MAX(event_date) max_day FROM final""").fetchone()
+    stats=con.execute("""SELECT COUNT(*) AS n_days,COUNT(DISTINCT stratum_id) AS n_strata,
+        SUM(is_onset) AS n_onsets, COUNT(DISTINCT grid_id) AS n_grids,
+        MIN(event_date) AS min_day, MAX(event_date) AS max_day FROM final""").fetchone()
     s={"rows":stats[0],"strata":stats[1],"onsets":stats[2],"grids":stats[3],
        "min_date":str(stats[4]),"max_date":str(stats[5]),
        "event_definition":"primary high-specificity NEWS geocoding date, not observed inundation extent",
