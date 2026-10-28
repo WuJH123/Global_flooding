@@ -27,6 +27,7 @@ ALLOWED={
     "nearest_mapped_river_km":"river_distance",
     "hand_lt2_fraction":"low_hand",
     "impervious_mean_fraction":"impervious",
+    "ghsl_built_5km_mean_wmean":"within20km_built_mean",
     "ghsl_built_5km_sd_wmean":"within20km_built_heterogeneity",
     "ghsl_built_5km_max_wmean":"within20km_built_max",
     "ghsl_built_5km_high_area_wmean":"within20km_high_built_share"
@@ -197,6 +198,11 @@ def fit_validation(data,base,features,mode,aggregation,seed,block_cells,reps,inc
     refpairs=[("E0_global","E1_type")]
     refpairs += [("E0_global","S_"+ALLOWED[f]) for f in features]
     refpairs += [("E0_global","E2_continuous_P24"),("E1_type","E2_continuous_P24")]
+    # Direct incremental inference on identical heldout strata/blocks. In a
+    # TWO-modifier fit, compare both single-modifier models to the joint one;
+    # never subtract two separately bootstrapped CIs from different runs.
+    if len(features)>=2:
+        refpairs += [("S_"+ALLOWED[f],"E2_continuous_P24") for f in features]
     if include_extended:
         refpairs += [("E2_continuous_P24","E3_continuous_P24_API7"),
                      ("E1_type","E3_continuous_P24_API7")]

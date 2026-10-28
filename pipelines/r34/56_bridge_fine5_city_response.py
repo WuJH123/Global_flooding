@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 MAPPING={
+    "built_fraction_cell":"ghsl_built_5km_mean_wmean",
     "child_built_sd":"ghsl_built_5km_sd_wmean",
     "child_built_max":"ghsl_built_5km_max_wmean",
     "high_built_area_fraction":"ghsl_built_5km_high_area_wmean",
