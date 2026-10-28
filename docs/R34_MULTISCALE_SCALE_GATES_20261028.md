@@ -140,10 +140,26 @@ do not silently drop. Review geographic/climate/precision bias among
 excluded cities. The 100m centre-in-city integration is approximate
 along UCDB polygon edges; it does NOT measure actual drainage capacity.
 
+
+## 5b. Stage61: stratified city-built-environment scale sensitivity
+
+Using SAME Stage59 city sample, compare UCDB city overlap-weighted
+**5/10/20km** built coverage, mean, SD, P90 and high-built share. This
+uses Stage54/55 only, not GEE. Because each full-cell BUILT fraction is
+re-used at an intersected city edge, this is a contextual proxy, not an
+independent city-boundary 100m integral; Stage58 is the source benchmark.
+
+~~~powershell
+& $PY "$R34\61_city_environment_scale_sensitivity.py" --pilot-cities "$PILOT\59_pilot_cities.csv" --ucdb "$UCDB" --fine-root "$BASE\mechanism_project\54_fine5_environment\built_2020" --coarse-root "$COARSE" --out "$BASE\audits\r34_env61"
+~~~
+
+Review 61_city_environment_by_scale.csv,
+61_scale_by_zone_precision.csv and 61_environment_scale_qc.json.
+
 ## 6. Stage60: evidence-scoped scale decision
 
 ~~~powershell
-& $PY "$R34\60_scale_decision_gate.py" --location "$PILOT\59_geocoding_scale_sensitivity.parquet" --pilot-cities "$PILOT\59_pilot_cities.csv" --boundary "$BASE\audits\r34_city58_full\58_city_boundary_comparison.csv" --source-qc "$BASE\audits\r34_source57_full\57_source_audit_qc.json" --out "$BASE\audits\r34_scale60"
+& $PY "$R34\60_scale_decision_gate.py" --location "$PILOT\59_geocoding_scale_sensitivity.parquet" --pilot-cities "$PILOT\59_pilot_cities.csv" --boundary "$BASE\audits\r34_city58_full\58_city_boundary_comparison.csv" --source-qc "$BASE\audits\r34_source57_full\57_source_audit_qc.json" --environment-qc "$BASE\audits\r34_env61\61_environment_scale_qc.json" --out "$BASE\audits\r34_scale60"
 ~~~
 
 Its verdict is intentionally two-tier:

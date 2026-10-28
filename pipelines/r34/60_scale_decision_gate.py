@@ -77,6 +77,7 @@ def main():
     p.add_argument("--min-precision-classes",type=int,default=2)
     p.add_argument("--min-source-audited",type=int,default=200)
     p.add_argument("--pilot-cities",type=Path,help="Stage59 city table used for Köppen zone coverage")
+    p.add_argument("--environment-qc",type=Path,required=True,help="Stage61 all-three-scale city coverage")
     a=p.parse_args()
     source=json.loads(a.source_qc.read_text(encoding="utf8"))
     raw,table=evaluate(a.location,pd.read_csv(a.boundary,dtype={"city_id":str}),
@@ -91,6 +92,13 @@ def main():
             raw["next_response_candidate_scale_km"]=None
     else:
         raw["status"]="INCOMPLETE_ZONE_VALIDATION"
+        raw["next_response_candidate_scale_km"]=None
+    env=json.loads(a.environment_qc.read_text(encoding="utf8"))
+    enough_env=int(env.get("cities_with_all_3_scales",0))>=a.min_cities
+    raw["n_cities_environment_all_scales"]=int(env.get("cities_with_all_3_scales",0))
+    raw["gate_checks"]["environment_scale_city_coverage"]=bool(enough_env)
+    if not enough_env:
+        raw["status"]="INSUFFICIENT_EVIDENCE"
         raw["next_response_candidate_scale_km"]=None
     a.out.mkdir(parents=True,exist_ok=True)
     table.to_csv(a.out/"60_multiscale_support_scorecard.csv",index=False)
