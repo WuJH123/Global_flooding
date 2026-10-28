@@ -130,7 +130,9 @@ def test_full_continuous_city_fit_shared_splits(tmp_path):
         d,tmp_path,features,"city","mean",2026,1,99,False)
     assert {"E0_global","E1_type","E2_continuous_P24"}.issubset(set(coeff.model))
     assert {"S_built","S_relief","S_climate"}.issubset(set(coeff.model))
-    assert len(comparison)==6
+    assert len(comparison)==6+len(features)
+    assert ((comparison.baseline=="S_built") & (comparison.augmented=="E2_continuous_P24")).any()
+    assert ((comparison.baseline=="S_relief") & (comparison.augmented=="E2_continuous_P24")).any()
     assert details["test_onsets"]>20
     assert (comparison.test_clusters>=15).all()
     assert marginal.ratio_ci_low.le(marginal.conditional_P24_ratio).all()
