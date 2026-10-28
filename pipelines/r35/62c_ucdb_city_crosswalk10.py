@@ -26,6 +26,7 @@ def run(grid,gpkg,out,layer=LAYER):
     cities["city_id"]=cities.city_id.astype(str)
     cities=cities.to_crs("EPSG:6933")
     cities=cities.loc[cities.geometry.notna()&~cities.geometry.is_empty].copy()
+    cities["geometry"]=cities.geometry.make_valid()
     if cities.city_id.duplicated().any():
         cities=cities.dissolve(by="city_id",as_index=False)
     grids=gpd.GeoDataFrame(g,geometry=[box(int(x)*10000,int(y)*10000,

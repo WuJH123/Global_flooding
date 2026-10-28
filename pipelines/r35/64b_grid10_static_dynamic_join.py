@@ -59,7 +59,7 @@ def join(grid,source,tifs,out,label):
         if ((result.built_nres_m2-result.built_total_m2)>1e6).any():
             raise ValueError("Non-residential built exceeds built total")
         result["built_fraction_wholecell"]=result.built_total_m2/1e8
-        result["pop_density_per_km2"]=result.population_count/100.
+        result["pop_density_gross_per_km2"]=result.population_count/100.
     if source=="era5":
         if (result.era5_soil1_mean.dropna().between(-.01,1.01)==False).any():
             raise ValueError("ERA5 soil moisture out of range")
