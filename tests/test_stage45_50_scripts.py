@@ -43,7 +43,7 @@ def test_smod_local_conversion():
         urban=np.zeros((732,1736),dtype="float32")
         valid=np.ones_like(urban)
         urban[200:210,500:710]=.20
-        with rasterio.open(tif,"w",driver="GTiff",width=1740,height=740,
+        with rasterio.open(tif,"w",driver="GTiff",width=1736,height=732,
              count=2,dtype="float32",crs="EPSG:6933",
              transform=Affine(20000,0,-17360000,0,-20000,7320000)) as ds:
             ds.write(urban,1);ds.write(valid,2)
