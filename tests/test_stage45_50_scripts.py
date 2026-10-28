@@ -25,27 +25,27 @@ def test_annual_parsers_and_versioned_filenames():
     assert mod.parse_years("2000,2002-2003")==[2000,2002,2003]
     assert mod.parse_years("2020")==[2020]
     with pytest.raises(ValueError):mod.parse_years("2026")
-    assert mod.SOURCES["era5"][2]=="ERA5RASTER_V2"
-    assert mod.SOURCES["imerg"][2]=="IMERGRASTER_V2"
+    assert mod.SOURCES["era5"][2]=="ERA5RASTER_V3"
+    assert mod.SOURCES["imerg"][2]=="IMERGRASTER_V3"
     assert load("50_imerg_annual_daily_extremes").parse_range("0-3,5",0,999)==[0,1,2,3,5]
     assert load("46b_gee_built_only").parse_epochs("2000,2010")==[2000,2010]
 
 def test_smod_20km_source_crs_contract():
     mod=load("45_smod2020_export")
-    assert mod.TRANSFORM==[20000,0,-17400000,0,-20000,7400000]
-    assert mod.VERSION=="SMOD2020_20KM_V2"
+    assert mod.TRANSFORM==[20000,0,-17360000,0,-20000,7320000]
+    assert mod.VERSION=="SMOD2020_20KM_V3"
 
 def test_smod_local_conversion():
     mod=load("45b_smod2020_to_asset")
     with tempfile.TemporaryDirectory() as d:
         path=Path(d)
         tif=path/"smod.tif";csv=path/"urban.csv"
-        urban=np.zeros((740,1740),dtype="float32")
+        urban=np.zeros((732,1736),dtype="float32")
         valid=np.ones_like(urban)
         urban[200:210,500:710]=.20
         with rasterio.open(tif,"w",driver="GTiff",width=1740,height=740,
              count=2,dtype="float32",crs="EPSG:6933",
-             transform=Affine(20000,0,-17400000,0,-20000,7400000)) as ds:
+             transform=Affine(20000,0,-17360000,0,-20000,7320000)) as ds:
             ds.write(urban,1);ds.write(valid,2)
         qc=mod.convert(tif,csv,.001,.95,5000)
         frame=pd.read_csv(csv)
@@ -56,12 +56,12 @@ def test_smod_local_conversion():
 
 def test_annual_parquet_requires_all_26_years(tmp_path,monkeypatch):
     script=load("53b_raster_to_grid_parquet")
-    assert script.PAT["era5"].match("era5raster_v2_y2020.tif")
-    assert script.PAT["imerg"].match("imergraster_v2_y2020_test.tif")
+    assert script.PAT["era5"].match("era5raster_v3_y2020.tif")
+    assert script.PAT["imerg"].match("imergraster_v3_y2020_test.tif")
     grid=tmp_path/"grid.csv"
     pd.DataFrame([{"grid_id":"0_0","grid_x":0,"grid_y":0}]).to_csv(grid,index=False)
     root=tmp_path/"rasters";root.mkdir()
-    (root/"era5raster_v2_y2020.tif").write_bytes(b"not-read-due-to-year-gate")
+    (root/"era5raster_v3_y2020.tif").write_bytes(b"not-read-due-to-year-gate")
     monkeypatch.setattr(sys,"argv",["53b","--source","era5","--tif-root",str(root),
         "--grid-csv",str(grid),"--out",str(tmp_path/"out"),"--require-full"])
     with pytest.raises(RuntimeError,match="Missing/extra year"):
@@ -74,3 +74,38 @@ def test_offline_csv_auditor_flags_bad_physics(tmp_path):
        "built_2000_built_nres_m2":3,"built_2000_source_valid_area_m2":10}]).to_csv(p,index=False)
     report,_=module.inspect("built",[p],[2000],{"0_0"},True)
     assert report["status"]=="FAIL"
+
+
+def test_safe_global_export_extent_valid_and_original_invalid():
+    import math
+    from pyproj import Transformer
+    mod=load("ee_safe_global_export")
+    assert mod.validate_bounds()==(1736,732)
+    assert mod.validate_bounds(mod.TEST_BOUNDS)==(10,10)
+    trans=Transformer.from_crs("EPSG:6933","EPSG:4326",always_xy=True)
+    _,old_lat=trans.transform(17400000,7400000)
+    assert not math.isfinite(old_lat)
+    _,safe_lat=trans.transform(17360000,7320000)
+    assert math.isfinite(safe_lat)
+    with pytest.raises(ValueError):
+        mod.validate_bounds((-17400000,-7400000,17400000,7400000))
+
+def test_v3_converter_rejects_v2_origin_and_small_test(tmp_path):
+    mod=load("45b_smod2020_to_asset")
+    for shape,origin in [((740,1740),(-17400000,7400000)),((10,10),(7400000,3000000))]:
+        h,w=shape
+        tif=tmp_path/f"legacy_{h}.tif"
+        with rasterio.open(tif,"w",driver="GTiff",width=w,height=h,
+            count=2,dtype="float32",crs="EPSG:6933",
+            transform=Affine(20000,0,origin[0],0,-20000,origin[1])) as ds:
+            ds.write(np.ones((h,w),dtype="float32")*.1,1)
+            ds.write(np.ones((h,w),dtype="float32"),2)
+        with pytest.raises(ValueError,match="Production requires V3"):
+            mod.convert(tif,tmp_path/f"legacy_{h}.csv")
+
+def test_smod_stage45_validated_global_is_not_full_polar_globe():
+    mod=load("45_smod2020_export")
+    assert mod.task_name(False)=="SMOD2020_20KM_V3"
+    assert mod.task_name(True)=="SMOD2020_20KM_V3_TEST"
+    assert mod.SAFE_BOUNDS[3]==7320000
+    assert mod.SAFE_WIDTH*mod.SAFE_HEIGHT==1270752

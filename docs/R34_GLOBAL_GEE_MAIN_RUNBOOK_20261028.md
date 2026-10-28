@@ -1,3 +1,7 @@
+# WARNING: This historical runbook was superseded for Stage45/53 on 2026-10-28.
+# ALWAYS use docs/R34_STAGE45_V3_GEE_BOUNDS_RECOVERY.md for new SMOD/annual tasks.
+# Older V2 production command geometry is invalid, and old V2 filenames cannot be used.
+
 # R34 GEE main-only runbook — 2026-10-28
 
 此提交直接更新 main，无需新分支。使用 PowerShell，所有命令在 E:\Global_flooding 根目录执行。请勿重跑已有114份GHSL、Stage22 IMERG/ERA5事件参照气候、MERIT、BasinATLAS、CRU。
@@ -15,7 +19,7 @@ $PY="$BASE\.venv\Scripts\python.exe"
 $R34="$BASE\pipelines\r34"
 $PROJECT="eco-sector-503721-b7"
 $M3="projects/$PROJECT/assets/groundsource_merit_m3_grids"
-$ASSET="projects/$PROJECT/assets/urban_universe_smod2020_20km_v1"
+$ASSET="projects/$PROJECT/assets/urban_universe_smod2020_20km_v3"
 & $PY -m pytest -q tests/test_stage45_50_scripts.py tests/test_stage46_47_gee_context.py
 ~~~
 
@@ -27,13 +31,13 @@ $ASSET="projects/$PROJECT/assets/urban_universe_smod2020_20km_v1"
 & $PY "$R34\45_smod2020_export.py" --submit
 ~~~
 
-GEE Task 名 SMOD2020_20KM_V2；Drive GlobalFlood_E2020_Urban；将 smod2020_20km_v2.tif 下载到 E:\Global_flooding\R34_SMOD2020。
+GEE Task 名 SMOD2020_20KM_V3；Drive GlobalFlood_E2020_Urban；将 smod2020_20km_v3.tif 下载到 E:\Global_flooding\R34_SMOD2020。
 
 ~~~powershell
-$TIF="$BASE\R34_SMOD2020\smod2020_20km_v2.tif"
-$UCSV="$BASE\results_31\urban_universe_smod2020_20km_v1.csv"
+$TIF="$BASE\R34_SMOD2020\smod2020_20km_v3.tif"
+$UCSV="$BASE\results_31\urban_universe_smod2020_20km_v3.csv"
 & $PY "$R34\45b_smod2020_to_asset.py" --tif "$TIF" --out "$UCSV" --urban-min .001 --valid-min .95 --chunk-size 5000
-$QC=Get-Content "$BASE\results_31\urban_universe_smod2020_20km_v1_qc.json" -Raw | ConvertFrom-Json
+$QC=Get-Content "$BASE\results_31\urban_universe_smod2020_20km_v3_qc.json" -Raw | ConvertFrom-Json
 $LASTCHUNK=[int]$QC.chunks-1
 $CHUNKS="0-$LASTCHUNK"
 Write-Host "N2020=" $QC.rows "Chunks=" $CHUNKS
@@ -41,7 +45,7 @@ Write-Host "N2020=" $QC.rows "Chunks=" $CHUNKS
 
 在 GEE Code Editor Assets > NEW > Table upload 上传 CSV；longitude/latitude 为WGS84点，仅用于Table导入，GEE脚本使用 grid_x/grid_y 重建20km等面积矩形。上传到：
 
-projects/eco-sector-503721-b7/assets/urban_universe_smod2020_20km_v1
+projects/eco-sector-503721-b7/assets/urban_universe_smod2020_20km_v3
 
 验证Asset行数与QC JSON一致、无重复grid_id、chunk_id为数值列后，再执行后续任务。
 

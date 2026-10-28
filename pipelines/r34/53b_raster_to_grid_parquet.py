@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Stage53b: sample Stage53 annual TIFFs to exact E2020 20km urban grid IDs.
 
-Strict mode rejects partial TEST files, duplicate years, missing year(s),
+Strict mode accepts only V3 safe-projected annual TIFFs, rejects TEST, duplicate years,
 wrong CRS/affine, and centers outside raster. Coastal nulls are preserved.
 """
 from __future__ import annotations
@@ -19,8 +19,8 @@ METRICS={
        "valid_sm1_days","negative_precip_days"],
     "imerg":["total_mm","rx1day_mm","heavy20_days","wet1_days","rx30min_mm","valid_days"]}
 PAT={
-    "era5":re.compile(r"^era5raster_v2_y(\d{4})(?:_test)?(?:[-_].*)?\.tif$",re.I),
-    "imerg":re.compile(r"^imergraster_v2_y(\d{4})(?:_test)?(?:[-_].*)?\.tif$",re.I)}
+    "era5":re.compile(r"^era5raster_v3_y(\d{4})(?:_test)?(?:[-_].*)?\.tif$",re.I),
+    "imerg":re.compile(r"^imergraster_v3_y(\d{4})(?:_test)?(?:[-_].*)?\.tif$",re.I)}
 YEARS=set(range(2000,2026))
 X0=-17400000
 Y0=7400000

@@ -12,12 +12,13 @@ import importlib.util
 from pathlib import Path
 import re
 from ee_ease_projection import EASE_WKT,probe_projection
+from ee_safe_global_export import SAFE_TRANSFORM,make_region,server_probe_region,validate_bounds
 
 PROJECT="eco-sector-503721-b7"
-TRANSFORM=[20000,0,-17400000,0,-20000,7400000]
+TRANSFORM=SAFE_TRANSFORM
 SOURCES={
-    "era5":("47_gee_era5_annual_context.py","year_image","ERA5RASTER_V2"),
-    "imerg":("50_imerg_annual_daily_extremes.py","annual","IMERGRASTER_V2")}
+    "era5":("47_gee_era5_annual_context.py","year_image","ERA5RASTER_V3"),
+    "imerg":("50_imerg_annual_daily_extremes.py","annual","IMERGRASTER_V3")}
 
 def parse_years(s):
     out=set()
@@ -61,11 +62,14 @@ def main():
     import ee
     ee.Initialize(project=a.project)
     proj=probe_projection(ee)
+    # V2 used projected +/-7,400,000m beyond the valid EPSG:6933 Y-domain.
+    # Probe the ENTIRE production geometry, not just a central square.
+    validate_bounds()
+    server_probe_region(ee,proj,test=False)
     if not a.submit:return
     module=load(fname)
     previous={str(t.get("description")):str(t.get("state")) for t in ee.data.getTaskList()}
-    region=(ee.Geometry.Rectangle([9500000,2500000,9600000,2600000],proj,False)
-        if a.test else ee.Geometry.Rectangle([-17400000,-7400000,17400000,7400000],proj,False))
+    region=make_region(ee,proj,test=a.test)
     native_collection=("ECMWF/ERA5_LAND/DAILY_AGGR" if a.source=="era5"
         else "NASA/GPM_L3/IMERG_V07")
     native_band=("temperature_2m" if a.source=="era5" else "precipitation")
