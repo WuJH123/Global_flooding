@@ -31,7 +31,7 @@ def candidate_column(columns, proposals):
 def dates(values):
     x = pd.Series(values).astype('string').str.strip()
     x = x.where(~x.str.fullmatch(r"\d{4}", na=False), x + "-01-01")
-    return pd.to_datetime(x, errors='coerce', utc=True).dt.tz_localize(None).dt.normalize()
+    return pd.to_datetime(x, format='mixed', dayfirst=False, errors='coerce', utc=True).dt.tz_localize(None).dt.normalize()
 
 
 def read_reference(spec, start, end):

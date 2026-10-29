@@ -54,3 +54,9 @@ def test_duplicate_uuids_rejected_and_year_dates():
        'longitude':[0,0],'latitude':[0,0],'high':[True,True]})
     with pytest.raises(ValueError,match='Duplicate'):
         m.normalize_reports(x,'2000-01-01','2025-12-31')
+
+
+def test_mixed_legacy_date_formats_not_silently_coerced():
+    values = m.dates(['2020-01-01','2020-02-01 15:00:00','20200304',2021])
+    assert values.notna().all()
+    assert [str(x.date()) for x in values] == ['2020-01-01','2020-02-01','2020-03-04','2021-01-01']
