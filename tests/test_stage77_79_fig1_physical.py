@@ -71,3 +71,15 @@ def test_gfd_gee_hard_request_limit_and_duplicate_guard():
     s=(ROOT/'78_gfd_gee_physical_pilot.py').read_text()
     assert 'if not a.submit:return' in s
     assert 'jrc_perm_water' in s and "clear_views" in s
+
+
+def test_stage80_city_denominator_and_strata_are_preserved():
+    m=mod('80_fig1_city_selection.py')
+    c=pd.DataFrame({'city_id':['1','2','3','4'],'longitude':[10,11,20,21],
+      'latitude':[10,11,20,21],'continent':['Europe','Europe','Africa',None],
+      'screened':[True,False,False,True],'n_high_reports':[12,0,0,9],
+      'n_report_years':[4,0,0,3]})
+    result,t,pilot=m.audit(c,pilot_per_stratum=2)
+    assert len(result)==4 and sum(t['continent'].official_cities)==4
+    assert int(t['continent'].screened_cities.sum())==2
+    assert len(pilot)==4 and 'screened' in pilot and 'continent_category' in pilot
