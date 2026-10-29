@@ -53,3 +53,24 @@ def test_stitch_ghsl_v2_exact_window(tmp_path):
             assert (raster.width,raster.height,raster.count)==(1736,1464,3)
             for row in range(rows):
                 assert raster.read(1,window=rasterio.windows.Window(7,row*h,1,1))[0,0]==stripe*10+row+1
+
+
+def test_ghsl_v2_requires_bounded_row_partitions():
+    m=load("64_gee_context10_exports.py")
+    with pytest.raises(ValueError,match="GHSL V2 requires --row-parts"):
+        m.validate_row_parts("ghsl",1)
+    with pytest.raises(ValueError,match="GHSL V2 requires --row-parts"):
+        m.validate_row_parts("ghsl",2)
+    with pytest.raises(ValueError,match="positive divisor"):
+        m.validate_row_parts("ghsl",5)
+    for n in (4,6,8,12,24):
+        m.validate_row_parts("ghsl",n)
+    # ERA5/IMERG/CMIP6 have different native resolutions and may keep 1 row.
+    for name in ("era5","imerg","cmip6"):
+        m.validate_row_parts(name,1)
+
+
+def test_ghsl_v2_failed_task_cannot_silently_resume():
+    s=(ROOT/"64_gee_context10_exports.py").read_text(encoding="utf-8")
+    assert 'recent.get(name) in ("FAILED", "CANCELLED")' in s
+    assert "--resume only" in s
