@@ -18,6 +18,8 @@ from pathlib import Path
 
 PROJECT="eco-sector-503721-b7"
 GRID_SCALE=10000
+TOTAL_ROWS=1464
+GHSL_CONTRACT='V2_NATIVE_DENSITY_AREA'
 T=[10000,0,-17360000,0,-10000,7320000]
 STRIPES=((-17360000,0),(0,17360000))
 YMIN,YMAX=-7320000,7320000
@@ -28,17 +30,30 @@ def parse_csv_int(v):
     if not vals or len(set(vals))!=len(vals):raise ValueError("empty/repeated period")
     return vals
 
-def ghsl(ee,yr):
+def ghsl(ee, yr, region):
+    """Native-pixel area density -> frozen 10km area-conservative totals.
+
+    ee.Reducer.sum weights by OUTPUT covered fraction, not native pixel
+    fraction. Divide counts/m2 by native pixel area, sum weighted density,
+    then multiply by target pixel area. Separate POP/BUILT before reproj.
+    """
     pop=ee.Image(f"JRC/GHSL/P2023A/GHS_POP/{yr}").select("population_count")
-    b=ee.Image(f"JRC/GHSL/P2023A/GHS_BUILT_S/{yr}").select(["built_surface","built_surface_nres"])
-    # sum source pixel m2 and counts; if masked inputs use sum over observed,
-    # missing coverage recorded via non-null native pixel counts.
-    image=ee.Image.cat([
-        pop.rename("population_count"),
-        b.select("built_surface").rename("built_total_m2"),
-        b.select("built_surface_nres").rename("built_nres_m2")
+    built=ee.Image(f"JRC/GHSL/P2023A/GHS_BUILT_S/{yr}")
+    target_area=ee.Image.pixelArea().reproject(crs=EASE_WKT,crsTransform=T)
+    def integrate(source,name):
+        native=source.projection()
+        area_native=ee.Image.pixelArea().setDefaultProjection(native)
+        density=source.toFloat().divide(area_native).rename(name)
+        reduced=(density.clip(region)
+                 .reduceResolution(ee.Reducer.sum(),
+                                   bestEffort=False,maxPixels=16384)
+                 .reproject(crs=EASE_WKT,crsTransform=T))
+        return reduced.multiply(target_area).rename(name)
+    return ee.Image.cat([
+        integrate(pop,"population_count"),
+        integrate(built.select("built_surface"),"built_total_m2"),
+        integrate(built.select("built_surface_nres"),"built_nres_m2")
     ]).toFloat()
-    return image.reduceResolution(ee.Reducer.sum(),maxPixels=16384)
 
 def era5(ee,yr):
     col=ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR").filterDate(
@@ -124,10 +139,15 @@ def run(a):
     m.validate_local()
     jobs=make_jobs(a)
     if not jobs:raise ValueError("No jobs")
+    if a.row_parts<1 or TOTAL_ROWS%a.row_parts:
+        raise ValueError("row-parts must divide 1464")
     selected=[i for i in range(2) if a.stripes is None or i in a.stripes]
-    tasklist=[(period,s,details) for period,details in jobs for s in selected]
+    row_indices=range(a.row_parts) if a.rows is None else sorted(a.rows)
+    if any(r<0 or r>=a.row_parts for r in row_indices):
+        raise ValueError("row index outside parts")
+    tasklist=[(period,s,details,r) for period,details in jobs for s in selected for r in row_indices]
     print("[PLAN]",a.source,"production tasks",len(tasklist))
-    for period,s,_ in tasklist:print("[PLAN]",a.source,period,"stripe",s)
+    for period,s,_,r in tasklist:print("[PLAN]",a.source,period,"stripe",s,"row",r,"of",a.row_parts)
     a.out.mkdir(parents=True,exist_ok=True)
     if not a.submit:
         print("[DRY RUN] No EE task created");return
@@ -136,31 +156,49 @@ def run(a):
     proj=ee.Projection(EASE_WKT)
     recent={t.get("description"):t.get("state") for t in ee.data.getTaskList()}
     ledger=a.out/"64_production_submissions.jsonl"
-    for period,s,details in tasklist:
-        descriptor={"ghsl":"GHS10","era5":"ERA10","imerg":"IMG10","cmip6":"CMIP10"}[a.source]
-        name=f"{descriptor}_V1_{period}_S{s:02d}"
+    previous=set()
+    if ledger.exists():
+        for line in ledger.read_text(encoding="utf-8").splitlines():
+            try:previous.add(json.loads(line)["name"])
+            except (ValueError,KeyError):pass
+    for period,stripe,details,row in tasklist:
+        prefix={"ghsl":"GHS10","era5":"ERA10","imerg":"IMG10","cmip6":"CMIP10"}[a.source]
+        version="V2" if a.source=="ghsl" else "V1"
+        suffix=f"_R{row:02d}of{a.row_parts:02d}" if a.row_parts>1 else ""
+        name=f"{prefix}_{version}_{period}_S{stripe:02d}{suffix}"
         if len(name)>100:raise ValueError("EE description too long")
-        if name in recent:raise RuntimeError(f"Existing EE task {name} {recent[name]}; no duplicate submission")
-        img={"ghsl":lambda:ghsl(ee,details["year"]),
-             "era5":lambda:era5(ee,details["year"]),
-             "imerg":lambda:imerg(ee,details["year"]),
-             "cmip6":lambda:cmip6(ee,details["model"],details["scenario"],details["start"],details["end"])}
-        x0,x1=STRIPES[s]
-        region=ee.Geometry.Rectangle([x0,YMIN,x1,YMAX],proj,False)
-        # Synchronous export-geometry validation (NO queued TEST task).
-        # Catch invalid projected bounds before EE batch queue spends a day.
-        area=float(region.area(maxError=10000).getInfo())
-        expected=float((x1-x0)*(YMAX-YMIN))
-        if not math.isfinite(area) or abs(area-expected)/expected>.03:
-            raise RuntimeError(f"EE geometry area mismatch: {area} vs {expected}")
-        task=ee.batch.Export.image.toDrive(image=img[a.source](),
-            description=name,folder=a.folder,fileNamePrefix=name.lower(),
+        if name in recent or name in previous:
+            if a.resume:
+                print("[SKIP SUBMITTED]",name,recent.get(name,"local ledger"))
+                continue
+            raise RuntimeError(f"Existing EE task {name} {recent.get(name,'local ledger')}; pass --resume to SKIP")
+        x0,x1=STRIPES[stripe]
+        rows_per=TOTAL_ROWS//a.row_parts
+        top=YMAX-row*rows_per*GRID_SCALE
+        bottom=top-rows_per*GRID_SCALE
+        region=ee.Geometry.Rectangle([x0,bottom,x1,top],proj,False)
+        expected_pixels=((x1-x0)//GRID_SCALE)*rows_per
+        if expected_pixels<=0 or expected_pixels>10000000:
+            raise RuntimeError("Incorrect fixed-grid tile dimension")
+        if a.source=="ghsl":
+            img=ghsl(ee,details["year"],region)
+        elif a.source=="era5":
+            img=era5(ee,details["year"])
+        elif a.source=="imerg":
+            img=imerg(ee,details["year"])
+        else:
+            img=cmip6(ee,details["model"],details["scenario"],details["start"],details["end"])
+        task=ee.batch.Export.image.toDrive(
+            image=img,description=name,folder=a.folder,fileNamePrefix=name.lower(),
             region=region,crs=EASE_WKT,crsTransform=T,
             maxPixels=10000000,fileFormat="GeoTIFF")
         task.start()
         record={"name":name,"id":task.id,"source":a.source,
-                "stripe":s,"details":details}
-        with ledger.open("a",encoding="utf-8") as f:f.write(json.dumps(record)+"\n")
+                "stripe":stripe,"row":row,"row_parts":a.row_parts,
+                "target_pixels":expected_pixels,"details":details,
+                "ghsl_contract":GHSL_CONTRACT if a.source=="ghsl" else None}
+        with ledger.open("a",encoding="utf-8") as f:
+            f.write(json.dumps(record)+"\n")
         print("[STARTED]",record)
 
 def main():
@@ -176,9 +214,14 @@ def main():
     p.add_argument("--start-year",type=int)
     p.add_argument("--end-year",type=int)
     p.add_argument("--stripes",default="")
+    p.add_argument("--row-parts",type=int,default=1,
+                   help="split half-globes into fixed 10km latitude tiles; recommend 4 for GHSL")
+    p.add_argument("--rows",default="",help="comma-separated row tiles, optional")
+    p.add_argument("--resume",action="store_true",help="skip previously submitted tasks, never resubmit")
     p.add_argument("--submit",action="store_true")
     a=p.parse_args()
     a.stripes={int(x) for x in a.stripes.split(",")} if a.stripes else None
     if a.stripes is not None and not a.stripes<={0,1}:raise ValueError("Invalid stripe")
+    a.rows={int(x) for x in a.rows.split(",")} if a.rows else None
     run(a)
 if __name__=="__main__":main()
