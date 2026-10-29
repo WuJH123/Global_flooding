@@ -131,6 +131,16 @@ def make_jobs(a):
                  "start":a.start_year,"end":a.end_year})]
     raise ValueError("Unknown source")
 
+def validate_row_parts(source, row_parts):
+    """Local hard gate: avoid the known full-stripe GHSL reprojection failure."""
+    if row_parts < 1 or TOTAL_ROWS % row_parts:
+        raise ValueError("row-parts must be a positive divisor of 1464")
+    if source == "ghsl" and row_parts < 4:
+        raise ValueError(
+            "GHSL V2 requires --row-parts 4 (or 6, 8, 12, 24) to bound "
+            "native 100m reprojection; unpartitioned global stripes are prohibited"
+        )
+
 def run(a):
     import importlib.util
     p=Path(__file__).with_name("62_gee_freeze_grid10.py")
@@ -139,8 +149,7 @@ def run(a):
     m.validate_local()
     jobs=make_jobs(a)
     if not jobs:raise ValueError("No jobs")
-    if a.row_parts<1 or TOTAL_ROWS%a.row_parts:
-        raise ValueError("row-parts must divide 1464")
+    validate_row_parts(a.source, a.row_parts)
     selected=[i for i in range(2) if a.stripes is None or i in a.stripes]
     row_indices=range(a.row_parts) if a.rows is None else sorted(a.rows)
     if any(r<0 or r>=a.row_parts for r in row_indices):
@@ -167,6 +176,12 @@ def run(a):
         suffix=f"_R{row:02d}of{a.row_parts:02d}" if a.row_parts>1 else ""
         name=f"{prefix}_{version}_{period}_S{stripe:02d}{suffix}"
         if len(name)>100:raise ValueError("EE description too long")
+        if recent.get(name) in ("FAILED", "CANCELLED"):
+            raise RuntimeError(
+                f"Existing EE task {name} is {recent[name]}; --resume only "
+                "skips submissions and cannot repair failed exports. "
+                "Inspect the task error and plan a distinct recovery layout."
+            )
         if name in recent or name in previous:
             if a.resume:
                 print("[SKIP SUBMITTED]",name,recent.get(name,"local ledger"))
