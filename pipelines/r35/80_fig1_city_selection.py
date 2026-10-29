@@ -80,9 +80,10 @@ def audit(cities,dominant=None,context=None,koppen=None,pilot_per_stratum=4):
         summaries[label]=grouped
     # Sampling frame for external manual validation: includes sampled eligible
     # and ineligible cities, not claimed that all are satellite observable.
-    pilot=(c.groupby(['continent_category','screened'],dropna=False,group_keys=False)
-             .apply(lambda x:x.sample(n=min(len(x),pilot_per_stratum),
-                                      random_state=20261029),include_groups=False))
+    pilot=pd.concat([part.sample(n=min(len(part),pilot_per_stratum),
+                                  random_state=20261029)
+           for _,part in c.groupby(['continent_category','screened'],dropna=False)],
+           ignore_index=True)
     return c,summaries,pilot.reset_index(drop=True)
 
 def main():
