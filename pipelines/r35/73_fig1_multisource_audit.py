@@ -42,7 +42,24 @@ def read_reference(spec, start, end):
     if kind in ('shp', 'gpkg', 'geojson'):
         obj = gpd.read_file(path, layer=spec.get('layer'))
         if obj.crs is None:
-            raise ValueError(f"{spec['name']}: missing CRS; inspect metadata")
+            # A missing .prj is never a licence to silently assign WGS84.
+            declared = spec.get('confirmed_crs')
+            evidence = spec.get('crs_evidence')
+            if not declared or not evidence:
+                raise ValueError(
+                    f"{spec['name']}: missing CRS/.prj. Verify native CRS from original "
+                    "provider metadata, then set confirmed_crs and crs_evidence in LOCAL JSON. "
+                    "Never infer CRS from a familiar-looking map."
+                )
+            if declared.upper() == 'EPSG:4326':
+                bounds = obj.total_bounds
+                if not (np.isfinite(bounds).all() and
+                        -180 <= bounds[0] <= 180 and -180 <= bounds[2] <= 180 and
+                        -90 <= bounds[1] <= 90 and -90 <= bounds[3] <= 90):
+                    raise ValueError(f"{spec['name']}: bounds contradict declared EPSG:4326")
+            obj = obj.set_crs(declared, allow_override=False)
+        elif spec.get('confirmed_crs') and obj.crs != spec['confirmed_crs']:
+            raise ValueError(f"{spec['name']}: declared confirmed_crs conflicts with SHP CRS")
         geo = obj.geometry.to_crs('EPSG:6933')
     elif kind in ('csv', 'xlsx'):
         obj = pd.read_csv(path, low_memory=False) if kind == 'csv' else pd.read_excel(
@@ -61,9 +78,18 @@ def read_reference(spec, start, end):
     e = spec.get('end_field') or candidate_column(obj.columns, END_NAMES)
     if not s or s not in obj:
         raise ValueError(f"{spec['name']}: inspect start date field and set start_field")
+    # An archive containing only a year or year-month is unsuitable for a ±day
+    # temporal check. Retain its counts in preflight; exclude those rows here.
+    a_raw = obj[s].astype('string').str.strip()
+    b_raw = obj[e].astype('string').str.strip() if e else a_raw
+    partial = (a_raw.str.fullmatch(r"\\d{4}(?:-\\d{2})?", na=False) |
+               b_raw.str.fullmatch(r"\\d{4}(?:-\\d{2})?", na=False))
     a = dates(obj[s]); b = dates(obj[e]) if e else a.copy()
     b = b.fillna(a)
-    valid = (a.notna() & b.notna() & (b >= a) &
+    # Reject invalid/missing explicit end dates if end field exists; open
+    # intervals cannot automatically be replaced by a one-day event.
+    valid_dates = ~partial & (b.notna() if e else True)
+    valid = (valid_dates & a.notna() & b.notna() & (b >= a) &
              (a <= pd.Timestamp(end)) & (b >= pd.Timestamp(start)) &
              geo.notna() & ~geo.is_empty)
     total = len(obj)
@@ -97,7 +123,10 @@ def read_reference(spec, start, end):
     if not all(g.is_valid for g in geoms):
         raise ValueError(f"{spec['name']}: invalid archive polygons")
     info = {'source':spec['name'], 'family':spec['family'], 'raw_rows':total,
-            'usable_rows':len(out), 'start_field':s, 'end_field':e,
+            'usable_rows':len(out), 'partial_date_rows_excluded':int(partial.sum()),
+            'start_field':s, 'end_field':e,
+            'confirmed_crs':str(spec.get('confirmed_crs') or getattr(obj,'crs',None)),
+            'crs_evidence':spec.get('crs_evidence'),
             'temporal_envelope_start':str(a.iloc[idx].min().date()),
             'temporal_envelope_end':str(b.iloc[idx].max().date()),
             'point_buffer_km':radius, 'geometry_point_rows':int(ispoint.sum()),
@@ -260,7 +289,10 @@ def main():
         candidate_reference_events=('reference_event','nunique')).reset_index()
     families.to_csv(args.out/'73_family_summary.csv',index=False)
     bycity=pairs[['event_id','city_id','family']].drop_duplicates()
-    bycity=bycity[bycity.city_id.notna()].groupby('city_id').family.nunique()
+    # Unverified origin is not counted as a distinct family supporting evidence.
+    bycity=bycity[bycity.city_id.notna() &
+                 ~bycity.family.str.contains('unverified',case=False,na=False)]\
+                 .groupby('city_id').family.nunique()
     city['candidate_source_families']=city.city_id.map(bycity).fillna(0).astype(int)
     city.to_csv(args.out/'73_city_support.csv',index=False)
     render(summary,pairs,args.out)
