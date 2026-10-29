@@ -82,8 +82,8 @@ def read_reference(spec, start, end):
     # temporal check. Retain its counts in preflight; exclude those rows here.
     a_raw = obj[s].astype('string').str.strip()
     b_raw = obj[e].astype('string').str.strip() if e else a_raw
-    partial = (a_raw.str.fullmatch(r"\\d{4}(?:-\\d{2})?", na=False) |
-               b_raw.str.fullmatch(r"\\d{4}(?:-\\d{2})?", na=False))
+    partial = (a_raw.str.fullmatch(r"[0-9]{4}(?:-[0-9]{2})?", na=False) |
+               b_raw.str.fullmatch(r"[0-9]{4}(?:-[0-9]{2})?", na=False))
     a = dates(obj[s]); b = dates(obj[e]) if e else a.copy()
     b = b.fillna(a)
     # Reject invalid/missing explicit end dates if end field exists; open
