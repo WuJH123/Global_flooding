@@ -194,6 +194,7 @@ def main():
     ap.add_argument('--config',type=Path,required=True)
     ap.add_argument('--reports',type=Path,required=True)
     ap.add_argument('--city-audit',type=Path,required=True)
+    ap.add_argument('--dominant-city',type=Path,required=True,help='Stage62c dominant-city Parquet for primary grid_id')
     ap.add_argument('--out',type=Path,required=True)
     ap.add_argument('--start',default='2000-01-01')
     ap.add_argument('--end',default='2025-12-31')
@@ -233,6 +234,13 @@ def main():
         raise FileNotFoundError('Need original Figure1 primary_geocoded_reports.parquet and city_audit.csv')
     args.out.mkdir(parents=True,exist_ok=True)
     report=normalize_reports(pd.read_parquet(args.reports),args.start,args.end)
+    if 'grid_id' not in report.columns:
+        raise ValueError('Figure1 primary report output must retain grid_id to assign UCDB city')
+    dom=pd.read_parquet(args.dominant_city,columns=['grid_id','city_id'])
+    if dom.grid_id.duplicated().any():raise ValueError('Stage62c grid_id duplicates')
+    report=report.drop(columns=['city_id'],errors='ignore').merge(
+        dom,on='grid_id',how='left',validate='many_to_one')
+    report['city_id']=report.city_id.astype('string')
     city=pd.read_csv(args.city_audit,dtype={'city_id':str})
     if city.city_id.duplicated().any():raise ValueError('Duplicated official UCDB city_id')
     if report.empty:raise ValueError('No high specificity primary reports')
