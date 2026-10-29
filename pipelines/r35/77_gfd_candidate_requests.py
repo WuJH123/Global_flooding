@@ -40,7 +40,8 @@ def candidates(reports,manifest,max_km=100,days=7,limit=80,per_event=10,event_li
     tree=cKDTree(xyz(m.dfo_centroid_x,m.dfo_centroid_y))
     chord=2*np.sin((max_km/6371.0088)/2)
     pairs=[]
-    for part in np.array_split(r,max(1,int(np.ceil(len(r)/40000)))):
+    for lo in range(0,len(r),40000):
+        part=r.iloc[lo:lo+40000]
         found=tree.query_ball_point(xyz(part.longitude,part.latitude),r=chord)
         rrows=part.reset_index(drop=True)
         for i,inds in enumerate(found):
