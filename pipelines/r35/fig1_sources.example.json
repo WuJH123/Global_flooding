@@ -1,0 +1,48 @@
+{
+  "sources": [
+    {
+      "name": "dfo_region",
+      "enabled": true,
+      "path": "E:\\数据集\\全球洪水点位信息Global Active Archive of Large Flood Events, 1985-Present\\FloodArchive_region.shp",
+      "format": "shp",
+      "family": "dfo",
+      "point_radius_km": 50
+    },
+    {
+      "name": "dfo_master",
+      "enabled": true,
+      "path": "E:\\数据集\\大型洪水事件全球活跃档案（DFO）\\wlf_nhr_fl_dfomasterlist_20190418\\wlf_nhr_fl_dfomasterlist_20190418.shp",
+      "format": "shp",
+      "family": "dfo",
+      "point_radius_km": 50
+    },
+    {
+      "name": "legacy_1989_2017_points",
+      "enabled": true,
+      "path": "D:\\博士资料\\GIS材料\\全球数据\\全球重大洪水灾害典型案例数据集（2018.01-2018.12）\\Summary\\1989-2017 flood distribution point.shp",
+      "format": "shp",
+      "family": "legacy_flood_points_lineage_unverified",
+      "point_radius_km": 50
+    },
+    {
+      "name": "usgs_gfid",
+      "enabled": false,
+      "path": "E:\\Global_flooding\\grid10\\reference_external\\GFID\\AggregatedFloodData.xlsx",
+      "format": "xlsx",
+      "sheet": "Aggregated",
+      "family": "gfid_mixed",
+      "latitude": "Lat",
+      "longitude": "Lon",
+      "start_field": "Start Date",
+      "end_field": "End Date",
+      "source_field": "Source",
+      "family_map": {
+        "DFO": "dfo",
+        "DESINVENTAR": "desinventar",
+        "EM-DAT": "emdat",
+        "HANZE": "hanze"
+      },
+      "point_radius_km": 50
+    }
+  ]
+}
