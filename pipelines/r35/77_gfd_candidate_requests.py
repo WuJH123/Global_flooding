@@ -17,8 +17,8 @@ def xyz(lon,lat):
     la=np.radians(np.asarray(lat,dtype=float))
     return np.column_stack((np.cos(la)*np.cos(lo),np.cos(la)*np.sin(lo),np.sin(la)))
 
-def candidates(reports,manifest,max_km=100,days=7,limit=200,per_event=10):
-    if not (0 < max_km <= 300 and 0 <= days <= 14 and 1 <= limit <= 1000 and 1 <= per_event <= 100):
+def candidates(reports,manifest,max_km=100,days=7,limit=80,per_event=10,event_limit=8):
+    if not (0 < max_km <= 300 and 0 <= days <= 14 and 1 <= limit <= 1000 and 1 <= per_event <= 100 and 1 <= event_limit <= 8):
         raise ValueError('Pilot bounds: km 1..300, days 0..14, rows 1..1000, per-event 1..100')
     need_r={'event_id','grid_id','start_day','longitude','latitude','high'}
     need_m={'dfo_event_id','dfo_centroid_x','dfo_centroid_y','time_start_utc'}
@@ -65,6 +65,11 @@ def candidates(reports,manifest,max_km=100,days=7,limit=200,per_event=10):
         ['gfd_id','candidate_distance_km','candidate_date_lag_days','event_id'])
     # Every event-grid sampling unit is unique, even when multiple news reports land in a grid.
     df=df.drop_duplicates(['gfd_id','grid_id'])
+    # Deterministic small variety of meteorological event IDs, not cherry-picked positives.
+    event_ids=np.sort(df.gfd_id.unique())
+    rng=np.random.default_rng(20261029)
+    keep=set(rng.choice(event_ids,size=min(event_limit,len(event_ids)),replace=False))
+    df=df[df.gfd_id.isin(keep)].copy()
     df=df.groupby('gfd_id',sort=True,group_keys=False).head(per_event)
     # Stable round-robin across independent DFO event IDs; avoid one large flood dominating pilot.
     df['pick_rank']=df.groupby('gfd_id').cumcount()
@@ -82,11 +87,12 @@ def main():
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--max-km',type=float,default=100)
     p.add_argument('--days',type=int,default=7)
-    p.add_argument('--limit',type=int,default=160)
+    p.add_argument('--limit',type=int,default=80)
+    p.add_argument('--event-limit',type=int,default=8)
     p.add_argument('--per-event',type=int,default=10)
     a=p.parse_args()
     df=candidates(pd.read_parquet(a.reports),pd.read_csv(a.gfd_manifest),
-                  a.max_km,a.days,a.limit,a.per_event)
+                  a.max_km,a.days,a.limit,a.per_event,a.event_limit)
     a.out.mkdir(parents=True,exist_ok=True)
     df.to_csv(a.out/'77_gfd_city_grid_requests.csv',index=False)
     qc={'status':'PILOT_GFD_DFO_CENTROID_CANDIDATES_NOT_EVENT_ATTRIBUTION',
