@@ -2,11 +2,13 @@
   "sources": [
     {
       "name": "dfo_region",
-      "enabled": true,
+      "enabled": false,
       "path": "E:\\数据集\\全球洪水点位信息Global Active Archive of Large Flood Events, 1985-Present\\FloodArchive_region.shp",
       "format": "shp",
       "family": "dfo",
-      "point_radius_km": 50
+      "point_radius_km": 50,
+      "requires_crs_verification": true,
+      "crs_policy": "Missing .prj; provide evidenced confirmed_crs and crs_evidence in local config only after checking original provider metadata"
     },
     {
       "name": "dfo_master",
@@ -18,11 +20,12 @@
     },
     {
       "name": "legacy_1989_2017_points",
-      "enabled": true,
+      "enabled": false,
       "path": "D:\\博士资料\\GIS材料\\全球数据\\全球重大洪水灾害典型案例数据集（2018.01-2018.12）\\Summary\\1989-2017 flood distribution point.shp",
       "format": "shp",
       "family": "legacy_flood_points_lineage_unverified",
-      "point_radius_km": 50
+      "point_radius_km": 50,
+      "provenance_policy": "Do not count as independent before source lineage checked"
     },
     {
       "name": "usgs_gfid",
